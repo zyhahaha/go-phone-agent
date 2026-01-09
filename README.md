@@ -115,6 +115,10 @@ go mod download
 go build -o phone-agent cmd/main.go
 ```
 
+```ps
+$env:GOOS="windows"; $env:GOARCH="amd64"; go build -ldflags="-s -w" -o phone-agent-windows-amd64.exe cmd/main.go
+```
+
 ### 3. 运行示例
 
 ```bash
