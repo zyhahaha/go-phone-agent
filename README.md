@@ -49,6 +49,8 @@
 
 ### 1. 环境准备
 
+#### 在电脑上运行
+
 安装 ADB:
 
 ```bash
@@ -67,6 +69,42 @@ sudo apt install android-tools-adb
 ```bash
 adb devices
 ```
+
+#### 在手机上独立运行
+
+支持在 Android 手机上直接运行程序,无需依赖电脑。
+
+**依赖软件:**
+
+- **Termux**: Android 终端模拟器,提供 Linux 环境
+  - 下载地址: https://f-droid.org/packages/com.termux/
+  - 或从 Google Play / GitHub 下载
+
+- **LADB**: Android 版本的 ADB 工具
+  - 下载地址: https://github.com/yurikodesu/ladb-builds/releases
+  - 注意: 需要在手机上启用 USB 调试或无线调试（Android 10及以下需要使用电脑开启无线调试）
+
+**配置步骤:**
+
+1. 安装 Termux 和 LADB
+2. 在 Termux 中安装 Go:
+   ```bash
+   pkg update
+   pkg install golang
+   ```
+3. 克隆项目并编译:
+   ```bash
+   git clone <repository-url>
+   cd go-phone-agent
+   go mod download
+   go build -o phone-agent cmd/main.go
+   ```
+4. 运行程序:
+   ```bash
+   ./phone-agent --base-url https://open.bigmodel.cn/api/paas/v4 --model "autoglm-phone" --apikey "key" "打开微信"
+   ```
+
+**注意:** 在手机上运行时,需要使用 LADB 提供的 ADB 服务,连接到本地设备。
 
 ### 2. 编译项目
 
