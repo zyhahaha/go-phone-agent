@@ -72,6 +72,7 @@ adb devices
 
 ```bash
 cd go-phone-agent
+go env -w GOPROXY=https://goproxy.cn,direct
 go mod download
 go build -o phone-agent cmd/main.go
 ```
