@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: # 新增：启用手动触发功能，无额外配置即可直接使用
 
 jobs:
   build-and-release:
