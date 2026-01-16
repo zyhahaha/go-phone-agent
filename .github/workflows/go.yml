@@ -1,36 +1,37 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+name: Go 自动打包并发布 Release
 
-name: Go
-
+# 触发条件：仅当推送 v* 格式 Tag 时触发（例如 v1.0.0、v1.1.0-beta）
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    tags:
+      - 'v*'
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     steps:
+      # 步骤 1：拉取仓库完整代码
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up Go
+      # 步骤 2：配置 Go 1.21 环境（与你的原配置一致）
+      - name: Set up Go 1.21
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
           cache: true
 
+      # 步骤 3：下载并整理项目依赖
       - name: Download and tidy dependencies
         run: |
           go mod tidy
           go mod download
 
-      - name: Build (default linux/amd64)
-        run: go build -ldflags="-s -w" -o phone-agent cmd/main.go
-
-      - name: Build (windows linux)
+      # 步骤 4：多平台编译（完全对应你的 PowerShell 命令，保留所有优化）
+      - name: Multi-platform build (windows/linux)
         run: |
+          # 创建 bin 目录存放所有产物，避免散落
           mkdir -p bin
           # Windows amd64
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/phone-agent-windows-amd64.exe cmd/main.go
@@ -44,4 +45,13 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/phone-agent-linux-arm64 cmd/main.go
           # Linux arm
           CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -ldflags="-s -w" -o bin/phone-agent-linux-arm cmd/main.go
-          
+
+      # 步骤 5：自动创建 Release 并上传所有产物（无需手动操作）
+      - name: Auto upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true # 自动生成版本说明（基于提交记录）
+          files: bin/* # 批量上传 bin 目录下的所有产物
+        env:
+          # GitHub 自动生成的令牌，无需手动配置，直接使用即可
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
