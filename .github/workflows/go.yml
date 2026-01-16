@@ -10,16 +10,40 @@ on:
     branches: [ "master" ]
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: '1.21'
+        cache: true # 新增：启用 Go 依赖缓存，加快后续构建速度
 
-    - name: Build
-      run: go build -o phone-agent cmd/main.go
+    - name: Download and tidy dependencies
+      # 新增：整理并下载依赖，避免依赖缺失导致编译失败
+      run: |
+        go mod tidy
+        go mod download
+
+    - name: Build (default linux/amd64)
+      # 保留原编译入口，新增 -ldflags="-s -w" 体积优化（与你的打包命令一致）
+      run: go build -ldflags="-s -w" -o phone-agent cmd/main.go
+
+    - name: Optional: Multi-platform build (same as your PowerShell commands)
+      # 可选：新增多平台编译，完全对应你的 6 个平台配置，产物存入 bin 目录
+      run: |
+        mkdir -p bin
+        # Windows amd64
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/phone-agent-windows-amd64.exe cmd/main.go
+        # Windows 386
+        CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -ldflags="-s -w" -o bin/phone-agent-windows-386.exe cmd/main.go
+        # Linux amd64
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/phone-agent-linux-amd64 cmd/main.go
+        # Linux 386
+        CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -ldflags="-s -w" -o bin/phone-agent-linux-386 cmd/main.go
+        # Linux arm64
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/phone-agent-linux-arm64 cmd/main.go
+        # Linux arm
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -ldflags="-s -w" -o bin/phone-agent-linux-arm cmd/main.go
