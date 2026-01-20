@@ -33,18 +33,6 @@
 | Long Press | 长按 |
 | Wait | 等待 |
 
-### 支持的应用
-
-支持 50+ 主流中文应用,包括:
-
-- **社交通讯**: 微信、QQ、微博
-- **电商购物**: 淘宝、京东、拼多多
-- **视频娱乐**: 抖音、B站、爱奇艺
-- **生活服务**: 美团、大众点评、高德地图
-- **其他**: 更多应用...
-
-运行 `./phone-agent --list-apps` 查看所有支持的应用。
-
 ## 快速开始
 
 ### 1. 环境准备
@@ -77,8 +65,7 @@ adb devices
 **依赖软件:**
 
 - **Termux**: Android 终端模拟器,提供 Linux 环境
-  - 下载地址: https://f-droid.org/packages/com.termux/
-  - 或从 Google Play / GitHub 下载
+  - 下载地址: https://github.com/termux/termux-app/releases
 
 - **LADB**: Android 版本的 ADB 工具
   - 下载地址: https://github.com/yurikodesu/ladb-builds/releases
@@ -88,21 +75,34 @@ adb devices
 
 1. 安装 Termux 和 LADB
 2. 在 Termux 中安装 Go:
-   ```bash
-   pkg update
-   pkg install golang
-   ```
+```bash
+pkg update
+# 安装 Go 语言
+pkg install golang
+
+# 验证安装
+go version
+
+# 安装 ADB 工具
+pkg install android-tools
+
+# 连接到本地 ADB 服务器
+adb connect localhost:5555
+
+# 验证连接
+adb devices
+```
 3. 克隆项目并编译:
-   ```bash
-   git clone <repository-url>
-   cd go-phone-agent
-   go mod download
-   go build -o phone-agent cmd/main.go
-   ```
+```bash
+git clone git@github.com:zyhahaha/go-phone-agent.git
+cd go-phone-agent
+go mod download
+go build -o phone-agent cmd/main.go
+```
 4. 运行程序:
-   ```bash
-   ./phone-agent --base-url https://open.bigmodel.cn/api/paas/v4 --model "autoglm-phone" --apikey "key" "打开微信"
-   ```
+```bash
+./phone-agent --base-url https://open.bigmodel.cn/api/paas/v4 --model "autoglm-phone" --apikey "key" "打开微信"
+```
 
 **注意:** 在手机上运行时,需要使用 LADB 提供的 ADB 服务,连接到本地设备。
 
@@ -123,10 +123,10 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -ldflags="-s -w" -o phone-age
 
 ```bash
 # 单次任务
-./phone-agent --base-url http://localhost:8000/v1 --model autoglm-phone-9b "打开微信发消息给文件传输助手:测试"
+./phone-agent --base-url https://open.bigmodel.cn/api/paas/v4 --apikey your-api-key --model autoglm-phone "打开微信发消息给文件传输助手:测试"
 
 # 交互模式
-./phone-agent --base-url http://localhost:8000/v1
+./phone-agent --base-url https://open.bigmodel.cn/api/paas/v4 --apikey your-api-key --model autoglm-phone
 ```
 
 ## 高级用法
@@ -138,8 +138,8 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -ldflags="-s -w" -o phone-age
 ```
 
 **必需参数:**
-- `--base-url`: 模型 API 基础地址 (例如: `http://localhost:8000/v1`)
-- `--model`: 模型名称 (例如: `autoglm-phone-9b`)
+- `--base-url`: 模型 API 基础地址 (例如: `https://open.bigmodel.cn/api/paas/v4`)
+- `--model`: 模型名称 (例如: `autoglm-phone`)
 
 **可选参数:**
 - `--apikey`: API 密钥
@@ -186,8 +186,8 @@ import (
 
 func main() {
     config := &model.ModelConfig{
-        BaseURL:   "http://localhost:8000/v1",
-        ModelName: "autoglm-phone-9b",
+        BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
+        ModelName: "autoglm-phone",
     }
 
     phoneAgent := agent.NewPhoneAgent(config, &agent.AgentConfig{
@@ -213,8 +213,8 @@ import (
 
 func main() {
     config := &model.ModelConfig{
-        BaseURL:   "http://localhost:8000/v1",
-        ModelName: "autoglm-phone-9b",
+        BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
+        ModelName: "autoglm-phone",
     }
 
     phoneAgent := agent.NewPhoneAgent(config, &agent.AgentConfig{

@@ -13,8 +13,8 @@ import (
 func main() {
 	// 创建配置
 	modelConfig := &model.ModelConfig{
-		BaseURL:   "http://localhost:8000/v1",
-		ModelName: "autoglm-phone-9b",
+		BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
+		ModelName: "autoglm-phone",
 		APIKey:    "EMPTY",
 	}
 
