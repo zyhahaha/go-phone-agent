@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"go-phone-agent/agent"
 	"go-phone-agent/adb"
+	"go-phone-agent/agent"
 	"go-phone-agent/config"
 	"go-phone-agent/model"
 )
@@ -113,21 +113,20 @@ func main() {
 
 	// 创建配置
 	modelConfig := &model.ModelConfig{
-		BaseURL:           *baseURL,
-		APIKey:            *apiKey,
-		ModelName:         *modelName,
-		MaxTokens:         3000,
-		Temperature:       0.0,
-		TopP:              0.85,
-		FrequencyPenalty:  0.2,
-		Lang:              *lang,
+		BaseURL:          *baseURL,
+		APIKey:           *apiKey,
+		ModelName:        *modelName,
+		MaxTokens:        3000,
+		Temperature:      0.0,
+		TopP:             0.85,
+		FrequencyPenalty: 0.2,
 	}
 
 	agentConfig := &agent.AgentConfig{
-		MaxSteps:    *maxSteps,
-		DeviceID:    *deviceID,
-		Lang:        *lang,
-		Verbose:     !*quiet,
+		MaxSteps: *maxSteps,
+		DeviceID: *deviceID,
+		Lang:     *lang,
+		Verbose:  !*quiet,
 	}
 
 	// 创建 Agent

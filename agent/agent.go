@@ -12,12 +12,12 @@ import (
 
 // PhoneAgent 手机自动化 Agent
 type PhoneAgent struct {
-	modelClient     *model.Client
-	actionHandler  *actions.ActionHandler
-	config         *AgentConfig
-	modelConfig    *model.ModelConfig
-	context        []model.Message
-	stepCount      int
+	modelClient   *model.Client
+	actionHandler *actions.ActionHandler
+	config        *AgentConfig
+	modelConfig   *model.ModelConfig
+	context       []model.Message
+	stepCount     int
 }
 
 // NewPhoneAgent 创建 PhoneAgent
@@ -30,7 +30,7 @@ func NewPhoneAgent(modelConfig *model.ModelConfig, agentConfig *AgentConfig, con
 	}
 
 	return &PhoneAgent{
-		modelClient:    model.NewClient(modelConfig),
+		modelClient:   model.NewClient(modelConfig),
 		actionHandler: actions.NewActionHandler(agentConfig.DeviceID, confirmationCallback, takeoverCallback),
 		config:        agentConfig,
 		modelConfig:   modelConfig,
@@ -93,7 +93,7 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 	// 构建消息
 	if isFirst {
 		// 系统消息
-		systemPrompt := getSystemPrompt(a.config.Lang)
+		systemPrompt := getSystemPrompt()
 		a.context = append(a.context, model.CreateSystemMessage(systemPrompt))
 
 		// 用户消息
@@ -208,70 +208,39 @@ type StepResult struct {
 	Message  string
 }
 
-// getSystemPrompt 获取系统提示词
-func getSystemPrompt(lang string) string {
-	if lang == "en" {
-		return `You are an intelligent phone automation assistant. Your task is to help users complete tasks on their Android phone by understanding screen content and executing appropriate actions.
-
-Available actions:
-- Launch(app): Launch an app by name
-- Tap(element=[x,y]): Tap at the specified coordinates (0-1000 range)
-- Type(text="xxx"): Input text
-- Swipe(start=[x1,y1], end=[x2,y2]): Swipe from start to end
-- Back(): Go back
-- Home(): Go to home screen
-- Double Tap(element=[x,y]): Double tap at coordinates
-- Long Press(element=[x,y]): Long press at coordinates
-- Wait(duration=1.0): Wait for specified seconds
-- Take_over(message): Request human intervention (for login, captcha, etc.)
-
-When you need to complete a task, follow these steps:
-1. Analyze the current screen image
-2. Think step by step about what needs to be done
-3. Output your thinking process
-4. Execute the appropriate action using do(action=..., ...)
-5. Continue until the task is complete
-6. When finished, use finish(message="...")
-
-Example output format:
-<thinking>
-I need to open WeChat and send a message to the file transfer assistant. First, I'll launch WeChat.
-</thinking>
-<answer>do(action="Launch", app="微信")</answer>`
-	}
-
+// 获取系统提示词
+func getSystemPrompt() string {
 	// 中文系统提示词
 	return `你是一个智能的手机自动化助手,能够理解屏幕内容并通过执行相应操作帮助用户完成任务。
+			可用操作:
+			- Launch(app="应用名"): 启动指定应用
+			- Tap(element=[x,y]): 点击指定坐标(0-1000范围)
+			- Type(text="文本内容"): 输入文本
+			- Swipe(start=[x1,y1], end=[x2,y2]): 从起点滑动到终点
+			- Back(): 返回上一页
+			- Home(): 返回桌面
+			- Double Tap(element=[x,y]): 双击指定坐标
+			- Long Press(element=[x,y]): 长按指定坐标
+			- Wait(duration=1.0): 等待指定秒数
+			- Take_over(message="说明"): 请求人工接管(用于登录、验证码等)
 
-可用操作:
-- Launch(app="应用名"): 启动指定应用
-- Tap(element=[x,y]): 点击指定坐标(0-1000范围)
-- Type(text="文本内容"): 输入文本
-- Swipe(start=[x1,y1], end=[x2,y2]): 从起点滑动到终点
-- Back(): 返回上一页
-- Home(): 返回桌面
-- Double Tap(element=[x,y]): 双击指定坐标
-- Long Press(element=[x,y]): 长按指定坐标
-- Wait(duration=1.0): 等待指定秒数
-- Take_over(message="说明"): 请求人工接管(用于登录、验证码等)
+			完成任务的步骤:
+			1. 分析当前屏幕截图
+			2. 逐步思考需要做什么
+			3. 输出你的思考过程
+			4. 使用 do(action=..., ...) 执行相应操作
+			5. 继续执行直到任务完成
+			6. 完成后使用 finish(message="完成信息")
 
-完成任务的步骤:
-1. 分析当前屏幕截图
-2. 逐步思考需要做什么
-3. 输出你的思考过程
-4. 使用 do(action=..., ...) 执行相应操作
-5. 继续执行直到任务完成
-6. 完成后使用 finish(message="完成信息")
+			输出格式示例:
+			<answer>do(action="Launch", app="微信")</answer>
 
-输出格式示例:
-<answer>do(action="Launch", app="微信")</answer>
-
-注意事项:
-- 坐标范围为0-1000,表示相对位置
-- 对于敏感操作(如支付、删除等),请使用 Take_over 请求用户确认
-- 如果需要人工介入(如输入验证码),使用 Take_over
-- 在每一步后观察屏幕变化,调整后续操作
-- 最多执行100步,如果未完成请使用 finish 说明情况`
+			注意事项:
+			- 坐标范围为0-1000,表示相对位置
+			- 对于敏感操作(如支付、删除等),请使用 Take_over 请求用户确认
+			- 如果需要人工介入(如输入验证码),使用 Take_over
+			- 在每一步后观察屏幕变化,调整后续操作
+			- 最多执行100步,如果未完成请使用 finish 说明情况`
 }
 
 // buildScreenInfo 构建屏幕信息
