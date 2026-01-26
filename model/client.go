@@ -34,13 +34,13 @@ func (c *Client) Request(messages []Message) (*ModelResponse, error) {
 
 	// 构建请求
 	req := &ChatCompletionRequest{
-		Messages:        messages,
-		Model:           c.config.ModelName,
-		MaxTokens:       c.config.MaxTokens,
-		Temperature:     c.config.Temperature,
-		TopP:            c.config.TopP,
+		Messages:         messages,
+		Model:            c.config.ModelName,
+		MaxTokens:        c.config.MaxTokens,
+		Temperature:      c.config.Temperature,
+		TopP:             c.config.TopP,
 		FrequencyPenalty: c.config.FrequencyPenalty,
-		Stream:          true,
+		Stream:           true,
 	}
 
 	reqBody, err := json.Marshal(req)
@@ -123,10 +123,6 @@ func (c *Client) Request(messages []Message) (*ModelResponse, error) {
 		markerFound := false
 		for _, marker := range actionMarkers {
 			if strings.Contains(buffer, marker) {
-				// 打印思考部分
-				thinkingPart := strings.Split(buffer, marker)[0]
-				fmt.Print(thinkingPart)
-				fmt.Println()
 				inActionPhase = true
 				markerFound = true
 
@@ -156,7 +152,6 @@ func (c *Client) Request(messages []Message) (*ModelResponse, error) {
 		}
 
 		if !isPotentialMarker {
-			fmt.Print(buffer)
 			buffer = ""
 		}
 	}
@@ -166,20 +161,6 @@ func (c *Client) Request(messages []Message) (*ModelResponse, error) {
 
 	// 解析响应
 	thinking, action := parseResponse(rawContent)
-
-	// 打印性能指标
-	fmt.Println()
-	fmt.Println("=" + strings.Repeat("=", 48))
-	fmt.Println("⏱️  性能指标:")
-	fmt.Println("-" + strings.Repeat("-", 48))
-	if timeToFirstToken > 0 {
-		fmt.Printf("首字延迟: %.3fs\n", timeToFirstToken)
-	}
-	if timeToThinkingEnd > 0 {
-		fmt.Printf("思考完成:     %.3fs\n", timeToThinkingEnd)
-	}
-	fmt.Printf("总推理时间:     %.3fs\n", totalTime)
-	fmt.Println("=" + strings.Repeat("=", 48))
 
 	return &ModelResponse{
 		Thinking:          thinking,

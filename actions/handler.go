@@ -76,9 +76,9 @@ func (h *ActionHandler) Execute(action map[string]interface{}, screenWidth, scre
 		return h.handleBack()
 	case "Home":
 		return h.handleHome()
-	case "Double Tap":
+	case "DoubleTap":
 		return h.handleDoubleTap(action, screenWidth, screenHeight)
-	case "Long Press":
+	case "LongPress":
 		return h.handleLongPress(action, screenWidth, screenHeight)
 	case "Wait":
 		return h.handleWait(action)
@@ -401,6 +401,11 @@ func parseCoordinates(coords interface{}) ([2]float64, error) {
 					result[i] = f
 				}
 			}
+		}
+	case []float64:
+		// float64 切片格式: [499.0, 300.0]
+		for i := 0; i < len(v) && i < 2; i++ {
+			result[i] = v[i]
 		}
 	case string:
 		// 字符串格式: "[500, 500]" 或 "500, 500"

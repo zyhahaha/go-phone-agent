@@ -30,7 +30,7 @@ func DoubleTap(x, y int, deviceID string) error {
 	// 第一次点击
 	cmd := exec.Command(cmdPrefix[0], append(cmdPrefix[1:], "shell", "input", "tap", strconv.Itoa(x), strconv.Itoa(y))...)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("double tap first failed: %w", err)
+		return fmt.Errorf("DoubleTap first failed: %w", err)
 	}
 
 	time.Sleep(100 * time.Millisecond) // 双击间隔
@@ -38,7 +38,7 @@ func DoubleTap(x, y int, deviceID string) error {
 	// 第二次点击
 	cmd = exec.Command(cmdPrefix[0], append(cmdPrefix[1:], "shell", "input", "tap", strconv.Itoa(x), strconv.Itoa(y))...)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("double tap second failed: %w", err)
+		return fmt.Errorf("DoubleTap second failed: %w", err)
 	}
 
 	time.Sleep(500 * time.Millisecond)

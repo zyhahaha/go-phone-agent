@@ -24,6 +24,40 @@ func DefaultModelConfig() *ModelConfig {
 	}
 }
 
+// SchedulerConfig 调度器配置
+type SchedulerConfig struct {
+	Enabled    bool         // 是否启用调度器模式
+	Scheduler  *ModelConfig // 调度器模型 (DeepSeek)
+	Vision     *ModelConfig // 视觉模型 (autoglm-phone)
+	VisionOnly bool         // 视觉模型是否只用于解析坐标
+}
+
+// DefaultSchedulerConfig 返回默认调度器配置
+func DefaultSchedulerConfig() *SchedulerConfig {
+	return &SchedulerConfig{
+		Enabled: false,
+		Scheduler: &ModelConfig{
+			BaseURL:          "https://api.deepseek.com",
+			APIKey:           "EMPTY",
+			ModelName:        "deepseek-chat",
+			MaxTokens:        2000,
+			Temperature:      0.7,
+			TopP:             0.9,
+			FrequencyPenalty: 0.0,
+		},
+		Vision: &ModelConfig{
+			BaseURL:          "https://open.bigmodel.cn/api/paas/v4",
+			APIKey:           "EMPTY",
+			ModelName:        "autoglm-phone",
+			MaxTokens:        3000,
+			Temperature:      0.0,
+			TopP:             0.85,
+			FrequencyPenalty: 0.2,
+		},
+		VisionOnly: true,
+	}
+}
+
 // ModelResponse 模型响应
 type ModelResponse struct {
 	Thinking          string  // 思考过程

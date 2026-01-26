@@ -161,7 +161,7 @@ go build -o phone-agent cmd/main.go
 | Swipe | 滑动屏幕 |
 | Back | 返回上一页 |
 | Home | 返回桌面 |
-| Double Tap | 双击 |
+| DoubleTap | 双击 |
 | Long Press | 长按 |
 | Wait | 等待 |
 

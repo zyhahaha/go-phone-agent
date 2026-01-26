@@ -25,6 +25,14 @@ func main() {
 	listDevices := flag.Bool("list-devices", false, "List connected devices and exit")
 	connect := flag.String("connect", "", "Connect to remote device (e.g., 192.168.1.100:5555)")
 	disconnect := flag.String("disconnect", "", "Disconnect from remote device")
+	// 调度器模式参数
+	schedulerMode := flag.Bool("scheduler", false, "Enable scheduler mode (DeepSeek + autoglm-phone)")
+	schedulerURL := flag.String("scheduler-url", "https://api.deepseek.com", "Scheduler (DeepSeek) API base URL")
+	schedulerKey := flag.String("scheduler-key", os.Getenv("SCHEDULER_API_KEY"), "Scheduler (DeepSeek) API key")
+	schedulerModel := flag.String("scheduler-model", "deepseek-chat", "Scheduler (DeepSeek) model name")
+	visionURL := flag.String("vision-url", "https://open.bigmodel.cn/api/paas/v4", "Vision (autoglm-phone) API base URL")
+	visionKey := flag.String("vision-key", os.Getenv("VISION_API_KEY"), "Vision (autoglm-phone) API key")
+	visionModel := flag.String("vision-model", "autoglm-phone", "Vision (autoglm-phone) model name")
 
 	flag.Parse()
 
@@ -112,36 +120,86 @@ func main() {
 	}
 
 	// 创建配置
-	modelConfig := &model.ModelConfig{
-		BaseURL:          *baseURL,
-		APIKey:           *apiKey,
-		ModelName:        *modelName,
-		MaxTokens:        3000,
-		Temperature:      0.0,
-		TopP:             0.85,
-		FrequencyPenalty: 0.2,
+	var phoneAgent *agent.PhoneAgent
+
+	if *schedulerMode {
+		// 调度器模式：DeepSeek + autoglm-phone
+		schedulerConfig := &model.SchedulerConfig{
+			Enabled: true,
+			Scheduler: &model.ModelConfig{
+				BaseURL:          *schedulerURL,
+				APIKey:           *schedulerKey,
+				ModelName:        *schedulerModel,
+				MaxTokens:        2000,
+				Temperature:      0.7,
+				TopP:             0.9,
+				FrequencyPenalty: 0.0,
+			},
+			Vision: &model.ModelConfig{
+				BaseURL:          *visionURL,
+				APIKey:           *visionKey,
+				ModelName:        *visionModel,
+				MaxTokens:        3000,
+				Temperature:      0.0,
+				TopP:             0.85,
+				FrequencyPenalty: 0.2,
+			},
+			VisionOnly: true,
+		}
+
+		agentConfig := &agent.AgentConfig{
+			MaxSteps: *maxSteps,
+			DeviceID: *deviceID,
+			Lang:     *lang,
+			Verbose:  !*quiet,
+		}
+
+		phoneAgent = agent.NewPhoneAgentWithScheduler(schedulerConfig, agentConfig, nil, nil)
+
+		// 打印头部
+		fmt.Println("=" + strings.Repeat("=", 48))
+		fmt.Println("Phone Agent - Scheduler Mode (DeepSeek + autoglm-phone)")
+		fmt.Println("=" + strings.Repeat("=", 48))
+		fmt.Printf("Scheduler Model: %s\n", *schedulerModel)
+		fmt.Printf("Scheduler URL: %s\n", *schedulerURL)
+		fmt.Printf("Vision Model: %s\n", *visionModel)
+		fmt.Printf("Vision URL: %s\n", *visionURL)
+		fmt.Printf("Max Steps: %d\n", *maxSteps)
+		fmt.Printf("Language: %s\n", *lang)
+		fmt.Printf("Device: %s\n", *deviceID)
+		fmt.Println("=" + strings.Repeat("=", 48))
+	} else {
+		// 原始模式：仅 autoglm-phone
+		modelConfig := &model.ModelConfig{
+			BaseURL:          *baseURL,
+			APIKey:           *apiKey,
+			ModelName:        *modelName,
+			MaxTokens:        3000,
+			Temperature:      0.0,
+			TopP:             0.85,
+			FrequencyPenalty: 0.2,
+		}
+
+		agentConfig := &agent.AgentConfig{
+			MaxSteps: *maxSteps,
+			DeviceID: *deviceID,
+			Lang:     *lang,
+			Verbose:  !*quiet,
+		}
+
+		phoneAgent = agent.NewPhoneAgent(modelConfig, agentConfig, nil, nil)
+
+		// 打印头部
+		fmt.Println("=" + strings.Repeat("=", 48))
+		fmt.Println("Phone Agent - Standard Mode")
+		fmt.Println("=" + strings.Repeat("=", 48))
+		fmt.Printf("Model: %s\n", *modelName)
+		fmt.Printf("Base URL: %s\n", *baseURL)
+		fmt.Printf("Max Steps: %d\n", *maxSteps)
+		fmt.Printf("Language: %s\n", *lang)
+		fmt.Printf("Device: %s\n", *deviceID)
+		fmt.Println("=" + strings.Repeat("=", 48))
 	}
-
-	agentConfig := &agent.AgentConfig{
-		MaxSteps: *maxSteps,
-		DeviceID: *deviceID,
-		Lang:     *lang,
-		Verbose:  !*quiet,
-	}
-
-	// 创建 Agent
-	phoneAgent := agent.NewPhoneAgent(modelConfig, agentConfig, nil, nil)
-
-	// 打印头部
-	fmt.Println("=" + strings.Repeat("=", 48))
-	fmt.Println("Phone Agent - AI-powered phone automation")
-	fmt.Println("=" + strings.Repeat("=", 48))
-	fmt.Printf("Model: %s\n", *modelName)
-	fmt.Printf("Base URL: %s\n", *baseURL)
-	fmt.Printf("Max Steps: %d\n", *maxSteps)
-	fmt.Printf("Language: %s\n", *lang)
-	fmt.Printf("Device: %s\n", *deviceID)
-	fmt.Println("=" + strings.Repeat("=", 48))
 
 	// 获取任务
 	task := ""
