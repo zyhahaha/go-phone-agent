@@ -15,34 +15,12 @@ type PhoneAgent struct {
 	modelClient     *model.Client
 	actionHandler   *actions.ActionHandler
 	config          *AgentConfig
-	modelConfig     *model.ModelConfig
 	scheduler       *model.SchedulerDeepSeek
 	schedulerConfig *model.SchedulerConfig
 	context         []model.Message
 	stepCount       int
 	actionHistory   []model.ActionHistory
-	currentTask     string // 当前任务（调度器模式使用）
-}
-
-// NewPhoneAgent 创建 PhoneAgent
-func NewPhoneAgent(modelConfig *model.ModelConfig, agentConfig *AgentConfig, confirmationCallback func(string) bool, takeoverCallback func(string)) *PhoneAgent {
-	if modelConfig == nil {
-		modelConfig = model.DefaultModelConfig()
-	}
-	if agentConfig == nil {
-		agentConfig = DefaultAgentConfig()
-	}
-
-	return &PhoneAgent{
-		modelClient:   model.NewClient(modelConfig),
-		actionHandler: actions.NewActionHandler(agentConfig.DeviceID, confirmationCallback, takeoverCallback),
-		config:        agentConfig,
-		modelConfig:   modelConfig,
-		context:       []model.Message{},
-		stepCount:     0,
-		actionHistory: []model.ActionHistory{},
-		currentTask:   "",
-	}
+	currentTask     string // 当前任务
 }
 
 // NewPhoneAgentWithScheduler 创建带调度器的 PhoneAgent
@@ -58,7 +36,6 @@ func NewPhoneAgentWithScheduler(schedulerConfig *model.SchedulerConfig, agentCon
 		modelClient:     model.NewClient(schedulerConfig.Vision),
 		actionHandler:   actions.NewActionHandler(agentConfig.DeviceID, confirmationCallback, takeoverCallback),
 		config:          agentConfig,
-		modelConfig:     schedulerConfig.Vision,
 		scheduler:       model.NewSchedulerDeepSeek(schedulerConfig.Scheduler),
 		schedulerConfig: schedulerConfig,
 		context:         []model.Message{},
@@ -107,6 +84,11 @@ func (a *PhoneAgent) Step(task string) *StepResult {
 	return a.executeStep(task, isFirst)
 }
 
+// GetStepCount 获取当前步数
+func (a *PhoneAgent) GetStepCount() int {
+	return a.stepCount
+}
+
 // Reset 重置 Agent 状态
 func (a *PhoneAgent) Reset() {
 	a.context = []model.Message{}
@@ -132,14 +114,8 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 	var thinking string
 	var execErr error
 
-	// 判断是否使用调度器模式
-	if a.scheduler != nil && a.schedulerConfig != nil && a.schedulerConfig.Enabled {
-		// 调度器模式：DeepSeek 规划，autoglm-phone 执行
-		action, thinking, execErr = a.executeWithScheduler(userPrompt, screenInfo, screenshot)
-	} else {
-		// 原始模式：autoglm-phone 直接处理
-		action, thinking, execErr = a.executeWithVisionModel(userPrompt, screenInfo, screenshot, isFirst)
-	}
+	// 执行调度器模式：DeepSeek 规划，autoglm-phone 执行
+	action, thinking, execErr = a.executeWithScheduler(userPrompt, screenInfo, screenshot)
 
 	if execErr != nil {
 		if a.config.Verbose {
@@ -151,9 +127,6 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 			Message:  fmt.Sprintf("Model error: %v", execErr),
 		}
 	}
-
-	// 移除图片以节省空间
-	a.context = removeImagesFromMessages(a.context)
 
 	// 执行动作
 	result, err := a.actionHandler.Execute(action, screenshot.Width, screenshot.Height)
@@ -183,12 +156,6 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 		Reason:  reasonStr,
 		Success: result.Success,
 	})
-
-	// 添加助手响应到上下文（仅原始模式）
-	if a.scheduler == nil {
-		assistantContent := fmt.Sprintf("<thinking>%s</thinking>\n<answer>%s</answer>", thinking, fmt.Sprintf("%v", action))
-		a.context = append(a.context, model.CreateAssistantMessage(assistantContent))
-	}
 
 	// 检查是否完成
 	finished := action["_metadata"] == "finish" || result.ShouldFinish
@@ -420,16 +387,33 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, 
 // analyzeScreen 使用视觉模型分析屏幕，返回屏幕描述
 func (a *PhoneAgent) analyzeScreen(screenInfo string, screenshot *adb.Screenshot) (string, error) {
 	// 构建屏幕分析的提示词
-	screenAnalysisPrompt := `你是一个屏幕内容分析助手。请仔细分析屏幕截图，用简洁的语言描述屏幕上显示的内容。
+	screenAnalysisPrompt := `你是一个屏幕内容分析助手。请仔细分析屏幕截图，客观描述屏幕上可见的内容。
 
-描述要点：
-1. 当前应用名称（如果顶部有应用名或图标）
-2. 屏幕上显示的主要内容
-3. 可见的按钮、输入框、图标等关键元素
-4. 任何弹出窗口、对话框、提示信息等
-5. 当前页面的状态（如：列表页、详情页、设置页等）
+**重要原则：**
+- 专注于描述屏幕上实际可见的内容
+- 不要猜测或推断不可见的信息
+- 应用名称可能无法准确识别，不要强制判断
 
-请用简洁的中文描述，不要超过200字。`
+**描述要点：**
+1. 屏幕上可见的文字和数字（优先级最高）
+2. 图标、按钮、输入框等UI元素的位置和样式
+3. 页面布局结构（顶部、中间、底部等）
+4. 颜色、背景、特殊标记等视觉特征
+5. 任何弹出窗口、对话框、加载提示等
+6. 如果能从标题栏或状态栏看到应用名称，可以提及，但标记为"可能"
+
+**格式要求：**
+- 先描述关键文字和数字
+- 再描述UI元素和布局
+- 最后提可能的页面状态
+- 总共不超过200字
+
+**示例：**
+"屏幕显示游戏界面。左上角显示数字'32'和'10'，中间有倒计时'2分50秒'，底部有红色'结束战斗'按钮。"
+
+**避免：**
+- 不要说"这是微信界面"，而应该说"底部有四个导航图标（微信、通讯录、发现、我）"
+- 不要说"这是设置应用"，而要说"顶部显示'Settings'标题，下方有多个设置项"`
 
 	visionContext := []model.Message{
 		model.CreateSystemMessage(screenAnalysisPrompt),
@@ -444,40 +428,6 @@ func (a *PhoneAgent) analyzeScreen(screenInfo string, screenshot *adb.Screenshot
 	// 屏幕分析应该返回纯文本，直接使用原始响应内容
 	// 不要经过 parseResponse 解析，避免被误解析为 finish 格式
 	return response.RawContent, nil
-}
-
-// executeWithVisionModel 使用原始模式执行
-func (a *PhoneAgent) executeWithVisionModel(userPrompt string, screenInfo string, screenshot *adb.Screenshot, isFirst bool) (map[string]interface{}, string, error) {
-	// 构建消息
-	if isFirst {
-		// 系统消息
-		systemPrompt := getSystemPrompt()
-		a.context = append(a.context, model.CreateSystemMessage(systemPrompt))
-
-		// 用户消息
-		textContent := fmt.Sprintf("%s\n\n%s", userPrompt, screenInfo)
-		a.context = append(a.context, model.CreateUserMessage(textContent, screenshot.Base64Data))
-	} else {
-		// 后续消息
-		textContent := fmt.Sprintf("** Screen Info **\n\n%s", screenInfo)
-		a.context = append(a.context, model.CreateUserMessage(textContent, screenshot.Base64Data))
-	}
-
-	response, err := a.modelClient.Request(a.context)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// 解析动作
-	action, err := actions.ParseAction(response.Action)
-	if err != nil {
-		action = map[string]interface{}{
-			"_metadata": "finish",
-			"message":   response.Action,
-		}
-	}
-
-	return action, response.Thinking, nil
 }
 
 // getVisionPrompt 获取视觉模型的提示词

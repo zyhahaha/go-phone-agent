@@ -11,31 +11,15 @@ type ModelConfig struct {
 	FrequencyPenalty float64 // 频率惩罚
 }
 
-// DefaultModelConfig 返回默认配置
-func DefaultModelConfig() *ModelConfig {
-	return &ModelConfig{
-		BaseURL:          "https://open.bigmodel.cn/api/paas/v4",
-		APIKey:           "EMPTY",
-		ModelName:        "autoglm-phone",
-		MaxTokens:        3000,
-		Temperature:      0.0,
-		TopP:             0.85,
-		FrequencyPenalty: 0.2,
-	}
-}
-
-// SchedulerConfig 调度器配置
+// SchedulerConfig 调度器配置（双模型架构）
 type SchedulerConfig struct {
-	Enabled    bool         // 是否启用调度器模式
-	Scheduler  *ModelConfig // 调度器模型 (DeepSeek)
-	Vision     *ModelConfig // 视觉模型 (autoglm-phone)
-	VisionOnly bool         // 视觉模型是否只用于解析坐标
+	Scheduler *ModelConfig // 调度器模型 (DeepSeek)，负责任务规划
+	Vision    *ModelConfig // 视觉模型 (autoglm-phone)，负责屏幕识别
 }
 
 // DefaultSchedulerConfig 返回默认调度器配置
 func DefaultSchedulerConfig() *SchedulerConfig {
 	return &SchedulerConfig{
-		Enabled: false,
 		Scheduler: &ModelConfig{
 			BaseURL:          "https://api.deepseek.com",
 			APIKey:           "EMPTY",
@@ -54,7 +38,6 @@ func DefaultSchedulerConfig() *SchedulerConfig {
 			TopP:             0.85,
 			FrequencyPenalty: 0.2,
 		},
-		VisionOnly: true,
 	}
 }
 

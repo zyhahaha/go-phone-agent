@@ -14,19 +14,14 @@ import (
 
 func main() {
 	// 定义命令行参数
-	baseURL := flag.String("base-url", os.Getenv("PHONE_AGENT_BASE_URL"), "Model API base URL")
-	modelName := flag.String("model", os.Getenv("PHONE_AGENT_MODEL"), "Model name")
-	apiKey := flag.String("apikey", os.Getenv("PHONE_AGENT_API_KEY"), "API key")
 	maxSteps := flag.Int("max-steps", 100, "Maximum steps per task")
 	deviceID := flag.String("device-id", os.Getenv("PHONE_AGENT_DEVICE_ID"), "ADB device ID")
-	lang := flag.String("lang", "cn", "Language (cn/en)")
 	quiet := flag.Bool("quiet", false, "Suppress verbose output")
 	listApps := flag.Bool("list-apps", false, "List supported apps and exit")
 	listDevices := flag.Bool("list-devices", false, "List connected devices and exit")
 	connect := flag.String("connect", "", "Connect to remote device (e.g., 192.168.1.100:5555)")
 	disconnect := flag.String("disconnect", "", "Disconnect from remote device")
-	// 调度器模式参数
-	schedulerMode := flag.Bool("scheduler", false, "Enable scheduler mode (DeepSeek + autoglm-phone)")
+	// 调度器模式参数（双模型架构）
 	schedulerURL := flag.String("scheduler-url", "https://api.deepseek.com", "Scheduler (DeepSeek) API base URL")
 	schedulerKey := flag.String("scheduler-key", os.Getenv("SCHEDULER_API_KEY"), "Scheduler (DeepSeek) API key")
 	schedulerModel := flag.String("scheduler-model", "deepseek-chat", "Scheduler (DeepSeek) model name")
@@ -119,87 +114,47 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 创建配置
-	var phoneAgent *agent.PhoneAgent
-
-	if *schedulerMode {
-		// 调度器模式：DeepSeek + autoglm-phone
-		schedulerConfig := &model.SchedulerConfig{
-			Enabled: true,
-			Scheduler: &model.ModelConfig{
-				BaseURL:          *schedulerURL,
-				APIKey:           *schedulerKey,
-				ModelName:        *schedulerModel,
-				MaxTokens:        2000,
-				Temperature:      0.7,
-				TopP:             0.9,
-				FrequencyPenalty: 0.0,
-			},
-			Vision: &model.ModelConfig{
-				BaseURL:          *visionURL,
-				APIKey:           *visionKey,
-				ModelName:        *visionModel,
-				MaxTokens:        3000,
-				Temperature:      0.0,
-				TopP:             0.85,
-				FrequencyPenalty: 0.2,
-			},
-			VisionOnly: true,
-		}
-
-		agentConfig := &agent.AgentConfig{
-			MaxSteps: *maxSteps,
-			DeviceID: *deviceID,
-			Lang:     *lang,
-			Verbose:  !*quiet,
-		}
-
-		phoneAgent = agent.NewPhoneAgentWithScheduler(schedulerConfig, agentConfig, nil, nil)
-
-		// 打印头部
-		fmt.Println("=" + strings.Repeat("=", 48))
-		fmt.Println("Phone Agent - Scheduler Mode (DeepSeek + autoglm-phone)")
-		fmt.Println("=" + strings.Repeat("=", 48))
-		fmt.Printf("Scheduler Model: %s\n", *schedulerModel)
-		fmt.Printf("Scheduler URL: %s\n", *schedulerURL)
-		fmt.Printf("Vision Model: %s\n", *visionModel)
-		fmt.Printf("Vision URL: %s\n", *visionURL)
-		fmt.Printf("Max Steps: %d\n", *maxSteps)
-		fmt.Printf("Language: %s\n", *lang)
-		fmt.Printf("Device: %s\n", *deviceID)
-		fmt.Println("=" + strings.Repeat("=", 48))
-	} else {
-		// 原始模式：仅 autoglm-phone
-		modelConfig := &model.ModelConfig{
-			BaseURL:          *baseURL,
-			APIKey:           *apiKey,
-			ModelName:        *modelName,
+	// 创建调度器模式配置（双模型架构）
+	schedulerConfig := &model.SchedulerConfig{
+		Scheduler: &model.ModelConfig{
+			BaseURL:          *schedulerURL,
+			APIKey:           *schedulerKey,
+			ModelName:        *schedulerModel,
+			MaxTokens:        2000,
+			Temperature:      0.7,
+			TopP:             0.9,
+			FrequencyPenalty: 0.0,
+		},
+		Vision: &model.ModelConfig{
+			BaseURL:          *visionURL,
+			APIKey:           *visionKey,
+			ModelName:        *visionModel,
 			MaxTokens:        3000,
 			Temperature:      0.0,
 			TopP:             0.85,
 			FrequencyPenalty: 0.2,
-		}
-
-		agentConfig := &agent.AgentConfig{
-			MaxSteps: *maxSteps,
-			DeviceID: *deviceID,
-			Lang:     *lang,
-			Verbose:  !*quiet,
-		}
-
-		phoneAgent = agent.NewPhoneAgent(modelConfig, agentConfig, nil, nil)
-
-		// 打印头部
-		fmt.Println("=" + strings.Repeat("=", 48))
-		fmt.Println("Phone Agent - Standard Mode")
-		fmt.Println("=" + strings.Repeat("=", 48))
-		fmt.Printf("Model: %s\n", *modelName)
-		fmt.Printf("Base URL: %s\n", *baseURL)
-		fmt.Printf("Max Steps: %d\n", *maxSteps)
-		fmt.Printf("Language: %s\n", *lang)
-		fmt.Printf("Device: %s\n", *deviceID)
-		fmt.Println("=" + strings.Repeat("=", 48))
+		},
 	}
+
+	agentConfig := &agent.AgentConfig{
+		MaxSteps: *maxSteps,
+		DeviceID: *deviceID,
+		Verbose:  !*quiet,
+	}
+
+	phoneAgent := agent.NewPhoneAgentWithScheduler(schedulerConfig, agentConfig, nil, nil)
+
+	// 打印头部
+	fmt.Println("=" + strings.Repeat("=", 48))
+	fmt.Println("Phone Agent - Scheduler Mode (DeepSeek + autoglm-phone)")
+	fmt.Println("=" + strings.Repeat("=", 48))
+	fmt.Printf("Scheduler Model: %s\n", *schedulerModel)
+	fmt.Printf("Scheduler URL: %s\n", *schedulerURL)
+	fmt.Printf("Vision Model: %s\n", *visionModel)
+	fmt.Printf("Vision URL: %s\n", *visionURL)
+	fmt.Printf("Max Steps: %d\n", *maxSteps)
+	fmt.Printf("Device: %s\n", *deviceID)
+	fmt.Println("=" + strings.Repeat("=", 48))
 
 	// 获取任务
 	task := ""

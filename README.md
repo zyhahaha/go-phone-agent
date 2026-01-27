@@ -1,17 +1,11 @@
 # Go Phone Agent
 
-基于 Go 语言实现的开源手机自动化智能体框架,能够理解手机屏幕内容并通过 ADB 自动化操作完成用户任务。
+基于 Go 语言实现的开源手机自动化智能体框架，采用双模型架构（DeepSeek + 视觉模型），能够理解手机屏幕内容并通过 ADB 自动化操作完成用户任务。
 
 ## 核心原理
 
-### 工作流程
+### 双模型架构工作流程
 
-**原始模式：**
-```
-用户指令 → ADB 截图 → 视觉模型分析 → 输出动作指令 → ADB 执行操作 → 循环直到任务完成
-```
-
-**调度器模式（新增）：**
 ```
 用户指令 → DeepSeek 调度器 → 任务规划 → 操作决策
                               ↓
@@ -21,7 +15,7 @@
               无需视觉              需要视觉
               (Launch/Type)       (Tap/Swipe)
                     ↓                   ↓
-              直接执行操作      autoglm-phone 解析
+              直接执行操作      视觉模型解析
                                     ↓
                               返回坐标 → 执行操作
 ```
@@ -30,22 +24,18 @@
 
 - **ADB (Android Debug Bridge)**: 底层设备控制
 - **Go 语言**: 高性能、低内存占用
-- **视觉语言模型**: 屏幕理解和决策
-- **调度器模型**（新增）: 任务规划和逻辑判断
+- **DeepSeek**: 任务规划和逻辑推理
+- **视觉模型**: 屏幕识别和坐标解析
 - **OpenAI 兼容 API**: 模型调用接口
 
-### 运行模式
+### 架构优势
 
-| 模式 | 模型 | 特点 | 适用场景 |
-|------|------|------|---------|
-| 原始模式 | autoglm-phone | 单一模型，简单直接 | 快速测试、简单任务 |
-| 调度器模式 | DeepSeek + autoglm-phone | 双模型，智能规划 | 复杂任务、多步骤操作 |
-
-**调度器模式优势：**
 - 🔥 **智能规划**：DeepSeek 强大的逻辑推理能力
 - ⚡ **性能优化**：减少视觉模型调用次数
 - 🎯 **职责分离**：规划与执行分离，各司其职
 - 💰 **成本控制**：按需调用视觉模型，降低成本
+- 🛡️ **容错能力强**：基于屏幕元素而非应用名称决策
+- 🔍 **识别准确**：视觉模型专注坐标识别，不受逻辑干扰
 
 ## 功能特性
 
@@ -178,34 +168,27 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -ldflags="-s -w" -o phone-age
   --vision-key your-autoglm-api-key
 ```
 
-**说明：** 调度器模式下，DeepSeek 负责任务规划和逻辑判断，autoglm-phone 只负责屏幕解析和坐标识别。详细说明请查看 [SCHEDULER_MODE.md](SCHEDULER_MODE.md)。
+**说明：** 双模型架构下，DeepSeek 负责任务规划和逻辑判断，视觉模型只负责屏幕解析和坐标识别。
 
 ## 高级用法
 
 ### 命令行选项
 
 ```bash
-./phone-agent --base-url <URL> --model <MODEL> [OPTIONS] [TASK]
+./phone-agent --scheduler-key <KEY> --vision-key <KEY> [OPTIONS] [TASK]
 ```
 
-**原始模式参数：**
-- `--base-url`: 模型 API 基础地址 (例如: `https://open.bigmodel.cn/api/paas/v4`)
-- `--model`: 模型名称 (例如: `autoglm-phone`)
-- `--apikey`: API 密钥
-
-**调度器模式参数：**
-- `--scheduler`: 启用调度器模式 (DeepSeek + autoglm-phone)
+**模型参数：**
 - `--scheduler-url`: 调度器 API 地址 (默认: `https://api.deepseek.com`)
 - `--scheduler-key`: 调度器 API 密钥 (DeepSeek)
 - `--scheduler-model`: 调度器模型名称 (默认: `deepseek-chat`)
 - `--vision-url`: 视觉模型 API 地址 (默认: `https://open.bigmodel.cn/api/paas/v4`)
-- `--vision-key`: 视觉模型 API 密钥 (autoglm-phone)
+- `--vision-key`: 视觉模型 API 密钥 (视觉模型)
 - `--vision-model`: 视觉模型名称 (默认: `autoglm-phone`)
 
 **通用参数：**
 - `--device-id`: ADB 设备 ID (不指定则自动检测)
 - `--max-steps`: 每个任务最大步数 (默认: 100)
-- `--lang`: 语言: `cn` 或 `en` (默认: `cn`)
 - `--quiet`: 抑制详细输出
 - `--list-apps`: 列出支持的应用并退出
 - `--list-devices`: 列出已连接的设备并退出
@@ -234,7 +217,7 @@ adb connect 192.168.1.100:5555
 
 ## 代码示例
 
-### 基础使用
+### 基础使用（双模型架构）
 
 ```go
 package main
@@ -245,16 +228,27 @@ import (
 )
 
 func main() {
-    config := &model.ModelConfig{
-        BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
-        ModelName: "autoglm-phone",
+    // 创建调度器配置（DeepSeek + 视觉模型）
+    schedulerConfig := &model.SchedulerConfig{
+        Scheduler: &model.ModelConfig{
+            BaseURL:   "https://api.deepseek.com",
+            ModelName: "deepseek-chat",
+            APIKey:    "YOUR_DEEPSEEK_API_KEY",
+        },
+        Vision: &model.ModelConfig{
+            BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
+            ModelName: "autoglm-phone",
+            APIKey:    "YOUR_VISION_API_KEY",
+        },
     }
 
-    phoneAgent := agent.NewPhoneAgent(config, &agent.AgentConfig{
+    // 创建 Agent
+    phoneAgent := agent.NewPhoneAgentWithScheduler(schedulerConfig, &agent.AgentConfig{
         MaxSteps: 100,
         DeviceID: "",
-    })
+    }, nil, nil)
 
+    // 执行任务
     result := phoneAgent.Run("打开淘宝搜索iPhone")
     println(result)
 }
@@ -272,15 +266,23 @@ import (
 )
 
 func main() {
-    config := &model.ModelConfig{
-        BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
-        ModelName: "autoglm-phone",
+    schedulerConfig := &model.SchedulerConfig{
+        Scheduler: &model.ModelConfig{
+            BaseURL:   "https://api.deepseek.com",
+            ModelName: "deepseek-chat",
+            APIKey:    "YOUR_DEEPSEEK_API_KEY",
+        },
+        Vision: &model.ModelConfig{
+            BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
+            ModelName: "autoglm-phone",
+            APIKey:    "YOUR_VISION_API_KEY",
+        },
     }
 
-    phoneAgent := agent.NewPhoneAgent(config, &agent.AgentConfig{
+    phoneAgent := agent.NewPhoneAgentWithScheduler(schedulerConfig, &agent.AgentConfig{
         MaxSteps: 100,
         Verbose:  true,
-    })
+    }, nil, nil)
 
     fmt.Println("输入任务 (输入 'quit' 退出):")
     for {
@@ -315,34 +317,62 @@ takeoverCallback := func(message string) {
     fmt.Scanln(new(string))
 }
 
-phoneAgent := agent.NewPhoneAgent(config, &agent.AgentConfig{}, confirmationCallback, takeoverCallback)
+schedulerConfig := &model.SchedulerConfig{
+    Scheduler: &model.ModelConfig{
+        BaseURL:   "https://api.deepseek.com",
+        ModelName: "deepseek-chat",
+        APIKey:    "YOUR_DEEPSEEK_API_KEY",
+    },
+    Vision: &model.ModelConfig{
+        BaseURL:   "https://open.bigmodel.cn/api/paas/v4",
+        ModelName: "autoglm-phone",
+        APIKey:    "YOUR_VISION_API_KEY",
+    },
+}
+
+phoneAgent := agent.NewPhoneAgentWithScheduler(
+    schedulerConfig,
+    &agent.AgentConfig{},
+    confirmationCallback,
+    takeoverCallback,
+)
 ```
 
 ## 项目结构
 
 ```
 go-phone-agent/
-├── cmd/main.go          # 命令行入口
-├── agent/               # Agent 核心逻辑
-│   ├── agent.go         # 主 Agent 实现
-│   └── config.go        # Agent 配置
-├── adb/                 # ADB 操作封装
-│   ├── device.go        # 设备控制函数
-│   ├── input.go         # 输入处理
-│   └── screenshot.go    # 截图函数
-├── model/               # 模型客户端
-│   ├── client.go        # API 客户端
-│   └── config.go        # 模型配置
-├── actions/             # 动作处理器
-│   └── handler.go       # 执行各种动作
-├── config/              # 配置文件
-│   └── apps.go          # 应用包名映射
-└── examples/            # 使用示例
-    ├── basic_usage.go
-    ├── interactive_mode.go
-    ├── custom_callbacks.go
-    └── step_by_step.go
+├── cmd/main.go              # 命令行入口
+├── agent/                   # Agent 核心逻辑
+│   ├── agent.go             # 主 Agent 实现（双模型架构）
+│   └── config.go            # Agent 配置
+├── adb/                     # ADB 操作封装
+│   ├── device.go            # 设备控制函数
+│   ├── input.go             # 输入处理
+│   └── screenshot.go        # 截图函数
+├── model/                   # 模型客户端
+│   ├── client.go            # API 客户端
+│   ├── scheduler.go         # DeepSeek 调度器实现
+│   └── config.go            # 模型配置
+├── actions/                 # 动作处理器
+│   └── handler.go           # 执行各种动作
+├── config/                  # 配置文件
+│   └── apps.go              # 应用包名映射
+├── examples/                # 使用示例
+│   ├── basic_usage.go       # 基础使用
+│   ├── interactive_mode.go  # 交互模式
+│   ├── custom_callbacks.go  # 自定义回调
+│   ├── step_by_step.go      # 单步调试
+│   └── scheduler_mode.go    # 双模型示例
+├── ARCHITECTURE.md          # 双模型架构详解
+├── MODEL_CONFIG_GUIDE.md    # 模型配置最佳实践
+└── README.md                # 项目文档
 ```
+
+## 相关文档
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - 双模型架构详细说明
+- **[MODEL_CONFIG_GUIDE.md](MODEL_CONFIG_GUIDE.md)** - 模型配置最佳实践和成本优化指南
 
 ## 依赖
 
