@@ -142,19 +142,19 @@ func (s *SchedulerDeepSeek) getSystemPrompt() string {
 
 **示例：**
 
-示例1 - 启动应用：
-<thought>用户要求打开微信，屏幕描述显示底部有多个应用图标，其中一个是微信图标</thought>
+示例1 - 点击图标（只依赖可见元素）：
+<thought>用户要求打开某个应用，屏幕描述显示底部有多个应用图标，其中包括一个带有绿色图标和红点通知的图标</thought>
 <action>Tap</action>
-<parameters>{"target": "屏幕上的微信应用图标"}</parameters>
-<reason>点击微信图标启动应用</reason>
+<parameters>{"target": "底部绿色的应用图标"}</parameters>
+<reason>点击绿色的应用图标</reason>
 
 示例2 - 点击按钮（不依赖应用名）：
-<thought>用户要求进入设置页面，屏幕描述显示底部有四个导航图标，最右侧一个是"我"</thought>
+<thought>用户要求进入个人页面，屏幕描述显示底部有四个导航图标，最右侧一个显示文字"我"</thought>
 <action>Tap</action>
-<parameters>{"target": "底部最右侧的'我'按钮"}</parameters>
+<parameters>{"target": "底部最右侧显示'我'的按钮"}</parameters>
 <reason>点击"我"按钮进入个人页面</reason>
 
-示例3 - 游戏操作（应用名可能错误）：
+示例3 - 游戏操作（完全基于可见内容）：
 <thought>用户要求点击进攻按钮，屏幕描述显示底部有一个绿色的"进击！"按钮，带有两把剑图标</thought>
 <action>Tap</action>
 <parameters>{"target": "底部绿色的'进击！'按钮，带有两把剑图标"}</parameters>

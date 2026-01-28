@@ -107,15 +107,12 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 		fmt.Printf("Screenshot error: %v\n", err)
 	}
 
-	currentApp := adb.GetCurrentApp(a.config.DeviceID)
-	screenInfo := buildScreenInfo(currentApp)
-
 	var action map[string]interface{}
 	var thinking string
 	var execErr error
 
 	// 执行调度器模式：DeepSeek 规划，autoglm-phone 执行
-	action, thinking, execErr = a.executeWithScheduler(userPrompt, screenInfo, screenshot)
+	action, thinking, execErr = a.executeWithScheduler(userPrompt, screenshot)
 
 	if execErr != nil {
 		if a.config.Verbose {
@@ -183,7 +180,7 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 }
 
 // executeWithScheduler 使用调度器模式执行
-func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, screenshot *adb.Screenshot) (map[string]interface{}, string, error) {
+func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Screenshot) (map[string]interface{}, string, error) {
 	// 使用保存的当前任务
 	task := a.currentTask
 
@@ -195,7 +192,7 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, 
 
 	// 第一步：先调用视觉模型获取屏幕描述
 	screenDescription := ""
-	screenDesc, err := a.analyzeScreen(screenInfo, screenshot)
+	screenDesc, err := a.analyzeScreen(screenshot)
 	if err != nil {
 		screenDescription = "屏幕分析失败"
 	} else {
@@ -300,7 +297,15 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, 
 	visionPrompt := a.getVisionPrompt(plan)
 	visionContext := []model.Message{
 		model.CreateSystemMessage(visionPrompt),
-		model.CreateUserMessage(screenInfo+"\n\n请分析屏幕并返回操作坐标。", screenshot.Base64Data),
+		model.CreateUserMessage("请分析屏幕并返回操作坐标。", screenshot.Base64Data),
+	}
+
+	// 打印发送给视觉模型的指令
+	if a.config.Verbose {
+		fmt.Println("📥 DeepSeek → autoglm-phone (视觉指令):")
+		fmt.Printf("操作类型: %s\n", plan.ActionType)
+		fmt.Printf("目标描述: %s\n", plan.Reason)
+		fmt.Println()
 	}
 
 	// 调用视觉模型获取坐标
@@ -312,12 +317,12 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, 
 	// 打印视觉模型的原始响应
 	if a.config.Verbose {
 		fmt.Println("📤 autoglm-phone → DeepSeek (坐标响应):")
-		fmt.Printf("%s\n", response.Action)
+		fmt.Printf("%s\n", response.RawContent)
 		fmt.Println()
 	}
 
 	// 解析视觉模型的响应（纯坐标格式）
-	coordinates, err := parseVisionCoordinates(response.Action, a.config.Verbose)
+	coordinates, err := parseVisionCoordinates(response.RawContent, a.config.Verbose)
 	if err != nil {
 		return nil, "", err
 	}
@@ -327,9 +332,6 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, 
 		"action":    plan.ActionType,
 		"_metadata": "do",
 	}
-
-	fmt.Println(visionAction)
-	fmt.Println(coordinates)
 
 	// 根据操作类型添加坐标
 	switch plan.ActionType {
@@ -385,7 +387,7 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenInfo string, 
 }
 
 // analyzeScreen 使用视觉模型分析屏幕，返回屏幕描述
-func (a *PhoneAgent) analyzeScreen(screenInfo string, screenshot *adb.Screenshot) (string, error) {
+func (a *PhoneAgent) analyzeScreen(screenshot *adb.Screenshot) (string, error) {
 	// 构建屏幕分析的提示词
 	screenAnalysisPrompt := `你是一个屏幕内容分析助手。请仔细分析屏幕截图，客观描述屏幕上可见的内容。
 
@@ -417,7 +419,7 @@ func (a *PhoneAgent) analyzeScreen(screenInfo string, screenshot *adb.Screenshot
 
 	visionContext := []model.Message{
 		model.CreateSystemMessage(screenAnalysisPrompt),
-		model.CreateUserMessage(screenInfo, screenshot.Base64Data),
+		model.CreateUserMessage("请分析这张图片", screenshot.Base64Data),
 	}
 
 	response, err := a.modelClient.Request(visionContext)
@@ -434,39 +436,48 @@ func (a *PhoneAgent) analyzeScreen(screenInfo string, screenshot *adb.Screenshot
 func (a *PhoneAgent) getVisionPrompt(plan *model.PlanResult) string {
 	basePrompt := `你是一个纯视觉坐标识别助手。你的唯一职责是分析屏幕截图并返回坐标。
 
-重要说明：
+**重要说明：**
 - 你只负责识别屏幕上的元素位置，返回坐标
 - 不需要分析操作逻辑或决定下一步做什么
-- 只返回坐标数据，不要返回任何动作指令
+- **只返回坐标数据，使用XML标签包裹，不要返回任何动作指令或解释文字**
 
-根据描述识别屏幕上的目标元素：
+**必须严格遵守的输出格式：**
 
 如果描述提到"点击"、"点"或"tap"：
 - 返回点击位置的坐标
-- 格式：<answer>[x,y]</answer>
+- **唯一正确的输出格式**：<answer>[x,y]</answer>
+- 示例：<answer>[500,200]</answer>
 
 如果描述提到"滑动"、"划"或"swipe"：
 - 返回起点和终点的坐标
-- 格式：<answer>[x1,y1],[x2,y2]</answer>
-  其中 [x1,y1] 是起点，[x2,y2] 是终点
+- **唯一正确的输出格式**：<answer>[x1,y1],[x2,y2]</answer>
+- 其中 [x1,y1] 是起点，[x2,y2] 是终点
+- 示例：<answer>[500,800],[500,200]</answer>
 
 如果描述提到"双击"：
 - 返回双击位置的坐标
-- 格式：<answer>[x,y]</answer>
+- **唯一正确的输出格式**：<answer>[x,y]</answer>
+- 示例：<answer>[300,400]</answer>
 
 如果描述提到"长按"：
 - 返回长按位置的坐标
-- 格式：<answer>[x,y]</answer>
+- **唯一正确的输出格式**：<answer>[x,y]</answer>
+- 示例：<answer>[600,300]</answer>
 
 坐标范围：0-1000，表示相对位置（左上角为[0,0]，右下角为[1000,1000]）。
 
-示例：
-- "点击搜索按钮" → <answer>[500,200]</answer>
-- "从下往上滑动" → <answer>[500,800],[500,200]</answer>
-- "双击图片" → <answer>[300,400]</answer>
-- "长按图标" → <answer>[600,300]</answer>
+**错误示例（绝对不要这样输出）：**
+❌ [103,470] - 缺少XML标签
+❌ 坐标是[103,470] - 添加了文字说明
+❌ 点击位置：<answer>[103,470]</answer> - 添加了前缀文字
 
-请直接返回坐标，不要添加任何解释。`
+**正确示例（唯一正确的输出方式）：**
+✅ <answer>[103,470]</answer>
+✅ <answer>[500,800],[500,200]</answer>
+
+**记住：整个响应只包含<answer>标签和坐标，不能有其他任何内容！**
+
+`
 
 	// 根据操作类型和原因构建具体的描述
 	var description string
@@ -488,6 +499,9 @@ func (a *PhoneAgent) getVisionPrompt(plan *model.PlanResult) string {
 
 // parseVisionCoordinates 解析视觉模型返回的纯坐标
 func parseVisionCoordinates(content string, verbose bool) ([][]float64, error) {
+	// 去除所有换行符和空格
+	content = strings.ReplaceAll(content, "\n", "")
+	content = strings.ReplaceAll(content, "\r", "")
 	content = strings.TrimSpace(content)
 
 	// 移除可能的 XML 标签
@@ -500,18 +514,19 @@ func parseVisionCoordinates(content string, verbose bool) ([][]float64, error) {
 	var coordinates [][]float64
 
 	// 查找所有 [xxx,xxx] 格式的坐标
-	openBracket := 0
+	openBracket := -1 // 使用 -1 表示未找到 [
 	for i := 0; i < len(content); i++ {
-		if content[i] == '[' {
+		char := content[i]
+		if char == '[' {
 			openBracket = i
-		} else if content[i] == ']' && openBracket > 0 {
+		} else if char == ']' && openBracket >= 0 {
 			// 提取括号内的内容
 			coordStr := content[openBracket+1 : i]
 			coord, err := parseSingleCoord(coordStr)
 			if err == nil {
 				coordinates = append(coordinates, coord)
 			}
-			openBracket = 0
+			openBracket = -1 // 重置为 -1
 		}
 	}
 
@@ -553,50 +568,6 @@ type StepResult struct {
 	Action   map[string]interface{}
 	Thinking string
 	Message  string
-}
-
-// 获取系统提示词
-func getSystemPrompt() string {
-	// 中文系统提示词
-	return `你是一个智能的手机自动化助手,能够理解屏幕内容并通过执行相应操作帮助用户完成任务。
-			可用操作:
-			- Launch(app="应用名"): 启动指定应用
-			- Tap(element=[x,y]): 点击指定坐标(0-1000范围)
-			- Type(text="文本内容"): 输入文本
-			- Swipe(start=[x1,y1], end=[x2,y2]): 从起点滑动到终点
-			- Back(): 返回上一页
-			- Home(): 返回桌面
-			- DoubleTap(element=[x,y]): 双击指定坐标
-			- Long Press(element=[x,y]): 长按指定坐标
-			- Wait(duration=1.0): 等待指定秒数
-			- Take_over(message="说明"): 请求人工接管(用于登录、验证码等)
-
-			完成任务的步骤:
-			1. 分析当前屏幕截图
-			2. 逐步思考需要做什么
-			3. 输出你的思考过程
-			4. 使用 do(action=..., ...) 执行相应操作
-			5. 继续执行直到任务完成
-			6. 完成后使用 finish(message="完成信息")
-
-			输出格式示例:
-			<answer>do(action="Launch", app="微信")</answer>
-
-			注意事项:
-			- 坐标范围为0-1000,表示相对位置
-			- 对于敏感操作(如支付、删除等),请使用 Take_over 请求用户确认
-			- 如果需要人工介入(如输入验证码),使用 Take_over
-			- 在每一步后观察屏幕变化,调整后续操作
-			- 最多执行100步,如果未完成请使用 finish 说明情况`
-}
-
-// buildScreenInfo 构建屏幕信息
-func buildScreenInfo(currentApp string) string {
-	info := map[string]string{
-		"current_app": currentApp,
-	}
-	jsonData, _ := json.Marshal(info)
-	return string(jsonData)
 }
 
 // removeImagesFromMessages 从消息中移除图片

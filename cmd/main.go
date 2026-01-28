@@ -8,7 +8,6 @@ import (
 
 	"go-phone-agent/adb"
 	"go-phone-agent/agent"
-	"go-phone-agent/config"
 	"go-phone-agent/model"
 )
 
@@ -17,7 +16,7 @@ func main() {
 	maxSteps := flag.Int("max-steps", 100, "Maximum steps per task")
 	deviceID := flag.String("device-id", os.Getenv("PHONE_AGENT_DEVICE_ID"), "ADB device ID")
 	quiet := flag.Bool("quiet", false, "Suppress verbose output")
-	listApps := flag.Bool("list-apps", false, "List supported apps and exit")
+	// listApps := flag.Bool("list-apps", false, "List supported apps and exit")
 	listDevices := flag.Bool("list-devices", false, "List connected devices and exit")
 	connect := flag.String("connect", "", "Connect to remote device (e.g., 192.168.1.100:5555)")
 	disconnect := flag.String("disconnect", "", "Disconnect from remote device")
@@ -32,13 +31,13 @@ func main() {
 	flag.Parse()
 
 	// 列出支持的应用
-	if *listApps {
-		fmt.Println("Supported apps:")
-		for _, app := range config.ListSupportedApps() {
-			fmt.Printf("  - %s\n", app)
-		}
-		return
-	}
+	// if *listApps {
+	// 	fmt.Println("Supported apps:")
+	// 	for _, app := range config.ListSupportedApps() {
+	// 		fmt.Printf("  - %s\n", app)
+	// 	}
+	// 	return
+	// }
 
 	// 列出设备
 	if *listDevices {
@@ -165,7 +164,7 @@ func main() {
 
 	if task == "" {
 		// 交互模式
-		fmt.Println("\nEntering interactive mode. Type 'quit' to exit.\n")
+		fmt.Println("Entering interactive mode. Type 'quit' to exit.")
 
 		for {
 			fmt.Print("Enter your task: ")
