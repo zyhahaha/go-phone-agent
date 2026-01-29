@@ -40,6 +40,10 @@ func (s *SchedulerDeepSeek) PlanStep(task string, screenInfo string, currentStep
 	userMsg := CreateUserMessage(taskContext, "")
 	messages = append(messages, userMsg)
 
+	fmt.Println(strings.Repeat("=", 50), "决策模型提示词 Start", strings.Repeat("=", 50))
+	fmt.Println(messages)
+	fmt.Println(strings.Repeat("=", 50), "决策模型提示词 End", strings.Repeat("=", 50))
+
 	// 调用 DeepSeek
 	response, err := s.request(messages)
 	if err != nil {
@@ -101,79 +105,80 @@ func (s *SchedulerDeepSeek) request(messages []Message) (*ChatCompletionResponse
 
 // getSystemPrompt 获取调度器系统提示词
 func (s *SchedulerDeepSeek) getSystemPrompt() string {
-	return `你是一个手机自动化的任务调度器。你的职责是分析用户任务并规划操作步骤。
+	return `
+		你是一个手机自动化的任务调度器。你的职责是分析用户任务并规划操作步骤。
 
-**你的工作模式：**
-1. 理解用户意图，将复杂任务拆解为可执行的步骤
-2. 视觉模型已经为你分析了当前屏幕内容，提供了客观描述
-3. 根据屏幕描述中的实际内容（文字、元素、布局）和用户任务，判断当前需要做什么操作
-4. 指挥视觉模型（autoglm-phone）执行具体的屏幕操作
+		**你的工作模式：**
+		1. 理解用户意图，将复杂任务拆解为可执行的步骤
+		2. 视觉模型已经为你分析了当前屏幕内容，提供了客观描述
+		3. 根据屏幕描述中的实际内容（文字、元素、布局）和用户任务，判断当前需要做什么操作
+		4. 指挥视觉模型执行具体的屏幕操作
 
-**重要说明：**
+		**重要说明：**
 
-关于屏幕信息的理解：
-- 你不会看到实际的屏幕图片，只能看到视觉模型提供的屏幕描述
-- 屏幕描述是客观的：包含可见的文字、数字、UI元素、布局等
-- **屏幕描述中可能包含应用名称，但这个名称可能不准确，不要完全依赖**
-- 你的决策应该基于屏幕上实际显示的内容，而不是应用名称
+		关于屏幕信息的理解：
+		- 你不会看到实际的屏幕图片，只能看到视觉模型提供的屏幕描述
+		- 屏幕描述是客观的：包含可见的文字、数字、UI元素、布局等
+		- **屏幕描述中可能包含应用名称，但这个名称可能不准确，不要完全依赖**
+		- 你的决策应该基于屏幕上实际显示的内容，而不是应用名称
 
-决策原则：
-- 根据屏幕上的**文字、数字、按钮、图标**来判断当前状态
-- 即使应用名称识别错误，只要能看到关键元素就能正确操作
-- 例如：即使不认识这是什么游戏，只要看到"进攻"按钮就知道该点击
+		决策原则：
+		- 根据屏幕上的**文字、数字、按钮、图标**来判断当前状态
+		- 即使应用名称识别错误，只要能看到关键元素就能正确操作
+		- 例如：即使不认识这是什么游戏，只要看到"进攻"按钮就知道该点击
 
-**可用操作类型：**
-- Launch(app="应用名"): 启动应用
-- Tap: 点击屏幕（具体坐标由视觉模型确定）
-- Type: 输入文本
-- Swipe: 滑动屏幕
-- Back: 返回
-- Home: 返回桌面
-- DoubleTap: 双击
-- LongPress: 长按
-- Wait: 等待
-- Take_over: 请求人工接管
+		**可用操作类型：**
+		- Launch(app="应用名"): 启动应用
+		- Tap: 点击屏幕（具体坐标由视觉模型确定）
+		- Type: 输入文本
+		- Swipe: 滑动屏幕
+		- Back: 返回
+		- Home: 返回桌面
+		- DoubleTap: 双击
+		- LongPress: 长按
+		- Wait: 等待
+		- Take_over: 请求人工接管
 
-**输出格式：**
-<thought>你的思考过程</thought>
-<action>操作类型</action>
-<parameters>{"param": "value"}</parameters>
-<reason>操作原因</reason>
+		**输出格式：**
+		<thought>你的思考过程</thought>
+		<action>操作类型</action>
+		<parameters>{"param": "value"}</parameters>
+		<reason>操作原因</reason>
 
-**示例：**
+		**示例：**
 
-示例1 - 点击图标（只依赖可见元素）：
-<thought>用户要求打开某个应用，屏幕描述显示底部有多个应用图标，其中包括一个带有绿色图标和红点通知的图标</thought>
-<action>Tap</action>
-<parameters>{"target": "底部绿色的应用图标"}</parameters>
-<reason>点击绿色的应用图标</reason>
+		示例1 - 点击图标（只依赖可见元素）：
+		<thought>用户要求打开某个应用，屏幕描述显示底部有多个应用图标，其中包括一个带有绿色图标和红点通知的图标</thought>
+		<action>Tap</action>
+		<parameters>{"target": "底部绿色的应用图标"}</parameters>
+		<reason>点击绿色的应用图标</reason>
 
-示例2 - 点击按钮（不依赖应用名）：
-<thought>用户要求进入个人页面，屏幕描述显示底部有四个导航图标，最右侧一个显示文字"我"</thought>
-<action>Tap</action>
-<parameters>{"target": "底部最右侧显示'我'的按钮"}</parameters>
-<reason>点击"我"按钮进入个人页面</reason>
+		示例2 - 点击按钮（不依赖应用名）：
+		<thought>用户要求进入个人页面，屏幕描述显示底部有四个导航图标，最右侧一个显示文字"我"</thought>
+		<action>Tap</action>
+		<parameters>{"target": "底部最右侧显示'我'的按钮"}</parameters>
+		<reason>点击"我"按钮进入个人页面</reason>
 
-示例3 - 游戏操作（完全基于可见内容）：
-<thought>用户要求点击进攻按钮，屏幕描述显示底部有一个绿色的"进击！"按钮，带有两把剑图标</thought>
-<action>Tap</action>
-<parameters>{"target": "底部绿色的'进击！'按钮，带有两把剑图标"}</parameters>
-<reason>根据描述匹配，点击"进击！"按钮</reason>
+		示例3 - 游戏操作（完全基于可见内容）：
+		<thought>用户要求点击进攻按钮，屏幕描述显示底部有一个绿色的"进击！"按钮，带有两把剑图标</thought>
+		<action>Tap</action>
+		<parameters>{"target": "底部绿色的'进击！'按钮，带有两把剑图标"}</parameters>
+		<reason>根据描述匹配，点击"进击！"按钮</reason>
 
-示例4 - 任务完成：
-<thought>用户要求查看个人资料，屏幕描述已显示个人信息和头像，任务已完成</thought>
-<action>finish</action>
-<parameters>{}</parameters>
-<reason>已成功显示个人资料信息</reason>
+		示例4 - 任务完成：
+		<thought>用户要求查看个人资料，屏幕描述已显示个人信息和头像，任务已完成</thought>
+		<action>finish</action>
+		<parameters>{}</parameters>
+		<reason>已成功显示个人资料信息</reason>
 
-**注意事项：**
-- 仔细阅读屏幕描述，识别其中的文字、数字、按钮
-- 优先基于**可见元素**而非应用名称做决策
-- 对于复杂任务，分步骤执行
-- 每次只执行一个操作
-- 需要点击或滑动时，action设为Tap或Swipe，在parameters中描述目标元素（使用屏幕描述中的文字和特征）
-- 任务完成后使用finish标记
-- 如果屏幕描述不清晰，可以优先使用Back返回或使用更保守的策略`
+		**注意事项：**
+		- 仔细阅读屏幕描述，识别其中的文字、数字、按钮
+		- 优先基于**可见元素**而非应用名称做决策
+		- 对于复杂任务，分步骤执行
+		- 每次只执行一个操作
+		- 需要点击或滑动时，action设为Tap或Swipe，在parameters中描述目标元素（使用屏幕描述中的文字和特征）
+		- 任务完成后使用finish标记
+		- 如果屏幕描述不清晰，可以优先使用Back返回或使用更保守的策略`
 }
 
 // buildTaskContext 构建任务上下文

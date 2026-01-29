@@ -299,6 +299,9 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 		model.CreateSystemMessage(visionPrompt),
 		model.CreateUserMessage("请分析屏幕并返回操作坐标。", screenshot.Base64Data),
 	}
+	fmt.Println(strings.Repeat("=", 50), "视觉坐标分析提示词 Start", strings.Repeat("=", 50))
+	fmt.Println(visionContext[0])
+	fmt.Println(strings.Repeat("=", 50), "视觉坐标分析提示词 End", strings.Repeat("=", 50))
 
 	// 打印发送给视觉模型的指令
 	if a.config.Verbose {
@@ -389,39 +392,39 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 // analyzeScreen 使用视觉模型分析屏幕，返回屏幕描述
 func (a *PhoneAgent) analyzeScreen(screenshot *adb.Screenshot) (string, error) {
 	// 构建屏幕分析的提示词
-	screenAnalysisPrompt := `你是一个屏幕内容分析助手。请仔细分析屏幕截图，客观描述屏幕上可见的内容。
+	screenAnalysisPrompt := `
+		你是一个屏幕内容分析助手。请详细描述屏幕截图中的所有可见内容。
 
-**重要原则：**
-- 专注于描述屏幕上实际可见的内容
-- 不要猜测或推断不可见的信息
-- 应用名称可能无法准确识别，不要强制判断
+		**分析重点：**
+		1. **所有文字内容**：标题、按钮文字、输入框提示、列表项、数字、时间、状态文字等
+		2. **所有按钮**：文字按钮的完整名称、位置（顶部/底部/中部）、颜色、大小
+		3. **所有图标**：图标的外观特征、形状、颜色、位置、可能的含义（如圆形相机图标、齿轮设置图标、聊天气泡图标等）
+		4. **所有UI元素**：输入框、开关、滑块、标签页、导航栏、返回按钮等
+		5. **页面结构**：顶部标题栏、内容区域、底部导航栏、悬浮按钮等布局
 
-**描述要点：**
-1. 屏幕上可见的文字和数字（优先级最高）
-2. 图标、按钮、输入框等UI元素的位置和样式
-3. 页面布局结构（顶部、中间、底部等）
-4. 颜色、背景、特殊标记等视觉特征
-5. 任何弹出窗口、对话框、加载提示等
-6. 如果能从标题栏或状态栏看到应用名称，可以提及，但标记为"可能"
+		**描述格式：**
+		- 按从上到下、从左到右的顺序描述
+		- 先描述顶部区域，再描述中间内容，最后描述底部
+		- 每个按钮、图标都要详细描述其外观和文字
 
-**格式要求：**
-- 先描述关键文字和数字
-- 再描述UI元素和布局
-- 最后提可能的页面状态
-- 总共不超过200字
+		**输出要求：**
+		- 完整描述，不要遗漏任何文字或可识别的UI元素
+		- 准确描述按钮的完整文字内容
+		- 详细描述图标的外观特征，而不是简单说"图标"
+		- 描述位置时使用具体方位（左上角、右上角、底部中央、右侧等）
+		- 字数不限，越详细越好
 
-**示例：**
-"屏幕显示游戏界面。左上角显示数字'32'和'10'，中间有倒计时'2分50秒'，底部有红色'结束战斗'按钮。"
-
-**避免：**
-- 不要说"这是微信界面"，而应该说"底部有四个导航图标（微信、通讯录、发现、我）"
-- 不要说"这是设置应用"，而要说"顶部显示'Settings'标题，下方有多个设置项"`
+		**示例输出：**
+		"顶部标题栏显示'我的相册'，右侧有返回图标（向左箭头）。中间显示九宫格图片，每个图片下方有日期文字（'1月15日'、'1月14日'等）。底部导航栏有四个图标：左侧第一个是圆形头像图标，第二个是方形相册图标，第三个是心形图标，右侧是设置齿轮图标。"`
 
 	visionContext := []model.Message{
 		model.CreateSystemMessage(screenAnalysisPrompt),
 		model.CreateUserMessage("请分析这张图片", screenshot.Base64Data),
 	}
 
+	fmt.Println(strings.Repeat("=", 50), "屏幕内容分析提示词 Start", strings.Repeat("=", 50))
+	fmt.Println(visionContext[0])
+	fmt.Println(strings.Repeat("=", 50), "屏幕内容分析提示词 End", strings.Repeat("=", 50))
 	response, err := a.modelClient.Request(visionContext)
 	if err != nil {
 		return "", err
@@ -434,50 +437,49 @@ func (a *PhoneAgent) analyzeScreen(screenshot *adb.Screenshot) (string, error) {
 
 // getVisionPrompt 获取视觉模型的提示词
 func (a *PhoneAgent) getVisionPrompt(plan *model.PlanResult) string {
-	basePrompt := `你是一个纯视觉坐标识别助手。你的唯一职责是分析屏幕截图并返回坐标。
+	basePrompt := `
+		你是一个纯视觉坐标识别助手。你的唯一职责是分析屏幕截图并返回坐标。
 
-**重要说明：**
-- 你只负责识别屏幕上的元素位置，返回坐标
-- 不需要分析操作逻辑或决定下一步做什么
-- **只返回坐标数据，使用XML标签包裹，不要返回任何动作指令或解释文字**
+		**重要说明：**
+		- 你只负责识别屏幕上的元素位置，返回坐标
+		- 不需要分析操作逻辑或决定下一步做什么
+		- **只返回坐标数据，使用XML标签包裹，不要返回任何动作指令或解释文字**
 
-**必须严格遵守的输出格式：**
+		**必须严格遵守的输出格式：**
 
-如果描述提到"点击"、"点"或"tap"：
-- 返回点击位置的坐标
-- **唯一正确的输出格式**：<answer>[x,y]</answer>
-- 示例：<answer>[500,200]</answer>
+		如果描述提到"点击"、"点"或"tap"：
+		- 返回点击位置的坐标
+		- **唯一正确的输出格式**：<answer>[x,y]</answer>
+		- 示例：<answer>[500,200]</answer>
 
-如果描述提到"滑动"、"划"或"swipe"：
-- 返回起点和终点的坐标
-- **唯一正确的输出格式**：<answer>[x1,y1],[x2,y2]</answer>
-- 其中 [x1,y1] 是起点，[x2,y2] 是终点
-- 示例：<answer>[500,800],[500,200]</answer>
+		如果描述提到"滑动"、"划"或"swipe"：
+		- 返回起点和终点的坐标
+		- **唯一正确的输出格式**：<answer>[x1,y1],[x2,y2]</answer>
+		- 其中 [x1,y1] 是起点，[x2,y2] 是终点
+		- 示例：<answer>[500,800],[500,200]</answer>
 
-如果描述提到"双击"：
-- 返回双击位置的坐标
-- **唯一正确的输出格式**：<answer>[x,y]</answer>
-- 示例：<answer>[300,400]</answer>
+		如果描述提到"双击"：
+		- 返回双击位置的坐标
+		- **唯一正确的输出格式**：<answer>[x,y]</answer>
+		- 示例：<answer>[300,400]</answer>
 
-如果描述提到"长按"：
-- 返回长按位置的坐标
-- **唯一正确的输出格式**：<answer>[x,y]</answer>
-- 示例：<answer>[600,300]</answer>
+		如果描述提到"长按"：
+		- 返回长按位置的坐标
+		- **唯一正确的输出格式**：<answer>[x,y]</answer>
+		- 示例：<answer>[600,300]</answer>
 
-坐标范围：0-1000，表示相对位置（左上角为[0,0]，右下角为[1000,1000]）。
+		坐标范围：0-1000，表示相对位置（左上角为[0,0]，右下角为[1000,1000]）。
 
-**错误示例（绝对不要这样输出）：**
-❌ [103,470] - 缺少XML标签
-❌ 坐标是[103,470] - 添加了文字说明
-❌ 点击位置：<answer>[103,470]</answer> - 添加了前缀文字
+		**错误示例（绝对不要这样输出）：**
+		❌ [103,470] - 缺少XML标签
+		❌ 坐标是[103,470] - 添加了文字说明
+		❌ 点击位置：<answer>[103,470]</answer> - 添加了前缀文字
 
-**正确示例（唯一正确的输出方式）：**
-✅ <answer>[103,470]</answer>
-✅ <answer>[500,800],[500,200]</answer>
+		**正确示例（唯一正确的输出方式）：**
+		✅ <answer>[103,470]</answer>
+		✅ <answer>[500,800],[500,200]</answer>
 
-**记住：整个响应只包含<answer>标签和坐标，不能有其他任何内容！**
-
-`
+		**记住：整个响应只包含<answer>标签和坐标，不能有其他任何内容！**`
 
 	// 根据操作类型和原因构建具体的描述
 	var description string
