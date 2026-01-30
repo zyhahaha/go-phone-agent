@@ -16,6 +16,7 @@ func main() {
 	maxSteps := flag.Int("max-steps", 100, "Maximum steps per task")
 	deviceID := flag.String("device-id", os.Getenv("PHONE_AGENT_DEVICE_ID"), "ADB device ID")
 	quiet := flag.Bool("quiet", false, "Suppress verbose output")
+	logEnabled := flag.Bool("log", false, "Enable logging to file (default: disabled)")
 	// listApps := flag.Bool("list-apps", false, "List supported apps and exit")
 	listDevices := flag.Bool("list-devices", false, "List connected devices and exit")
 	connect := flag.String("connect", "", "Connect to remote device (e.g., 192.168.1.100:5555)")
@@ -29,6 +30,17 @@ func main() {
 	visionModel := flag.String("vision-model", "autoglm-phone", "Vision (autoglm-phone) model name")
 
 	flag.Parse()
+
+	// 初始化日志系统（仅在 -log 参数启用时）
+	if *logEnabled {
+		if err := model.InitLogger(); err != nil {
+			fmt.Printf("Warning: Failed to initialize logger: %v\n", err)
+		}
+		defer model.CloseLogger()
+	} else {
+		// 禁用日志到文件，只输出到控制台
+		model.SetConsoleOnly(true)
+	}
 
 	// 列出支持的应用
 	// if *listApps {

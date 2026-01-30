@@ -40,15 +40,19 @@ func (s *SchedulerDeepSeek) PlanStep(task string, screenInfo string, currentStep
 	userMsg := CreateUserMessage(taskContext, "")
 	messages = append(messages, userMsg)
 
-	fmt.Println(strings.Repeat("=", 50), "决策模型提示词 Start", strings.Repeat("=", 50))
-	fmt.Println(messages)
-	fmt.Println(strings.Repeat("=", 50), "决策模型提示词 End", strings.Repeat("=", 50))
+	LogStart("决策模型提示词")
+	LogContent(messages)
+	LogEnd("决策模型提示词")
 
 	// 调用 DeepSeek
 	response, err := s.request(messages)
 	if err != nil {
 		return nil, fmt.Errorf("DeepSeek planning error: %w", err)
 	}
+
+	LogStart("决策模型输出")
+	LogContent(response)
+	LogEnd("决策模型输出")
 
 	// 解析计划
 	var content string
@@ -143,33 +147,43 @@ func (s *SchedulerDeepSeek) getSystemPrompt() string {
 		<thought>你的思考过程</thought>
 		<action>操作类型</action>
 		<parameters>{"param": "value"}</parameters>
-		<reason>操作原因</reason>
+		<reason>操作原因及明确指令（必须要求视觉模型提供坐标信息）</reason>
+
+		**重要：reason 字段的作用：**
+		- reason 不仅说明操作原因，更是给视觉模型的**明确指令**
+		- 除了 finish 操作外，所有操作都必须在 reason 中要求视觉模型提供**具体的坐标信息**
 
 		**示例：**
 
-		示例1 - 点击图标（只依赖可见元素）：
+		示例1 - 点击图标（明确要求坐标）：
 		<thought>用户要求打开某个应用，屏幕描述显示底部有多个应用图标，其中包括一个带有绿色图标和红点通知的图标</thought>
 		<action>Tap</action>
 		<parameters>{"target": "底部绿色的应用图标"}</parameters>
-		<reason>点击绿色的应用图标</reason>
+		<reason>请定位底部绿色的应用图标中心点，返回其(x, y)坐标</reason>
 
-		示例2 - 点击按钮（不依赖应用名）：
+		示例2 - 点击按钮（明确要求坐标）：
 		<thought>用户要求进入个人页面，屏幕描述显示底部有四个导航图标，最右侧一个显示文字"我"</thought>
 		<action>Tap</action>
 		<parameters>{"target": "底部最右侧显示'我'的按钮"}</parameters>
-		<reason>点击"我"按钮进入个人页面</reason>
+		<reason>请定位底部最右侧显示"我"文字的按钮中心点，返回其(x, y)坐标</reason>
 
-		示例3 - 游戏操作（完全基于可见内容）：
+		示例3 - 游戏操作（明确要求坐标）：
 		<thought>用户要求点击进攻按钮，屏幕描述显示底部有一个绿色的"进击！"按钮，带有两把剑图标</thought>
 		<action>Tap</action>
 		<parameters>{"target": "底部绿色的'进击！'按钮，带有两把剑图标"}</parameters>
-		<reason>根据描述匹配，点击"进击！"按钮</reason>
+		<reason>请定位底部绿色的"进击！"按钮（带有两把剑图标）中心点，返回其(x, y)坐标</reason>
 
-		示例4 - 任务完成：
+		示例4 - 滑动操作（明确要求起始和结束坐标）：
+		<thought>用户要求向下滑动查看更多内容，屏幕描述显示页面底部有提示"上拉加载更多"</thought>
+		<action>Swipe</action>
+		<parameters>{"direction": "up"}</parameters>
+		<reason>请从屏幕底部20%位置向上滑动到顶部80%位置，提供起始点(x1, y1)和结束点(x2, y2)坐标</reason>
+
+		示例5 - 任务完成（不需要坐标）：
 		<thought>用户要求查看个人资料，屏幕描述已显示个人信息和头像，任务已完成</thought>
 		<action>finish</action>
 		<parameters>{}</parameters>
-		<reason>已成功显示个人资料信息</reason>
+		<reason>已成功显示个人资料信息，任务完成</reason>
 
 		**注意事项：**
 		- 仔细阅读屏幕描述，识别其中的文字、数字、按钮
@@ -177,6 +191,11 @@ func (s *SchedulerDeepSeek) getSystemPrompt() string {
 		- 对于复杂任务，分步骤执行
 		- 每次只执行一个操作
 		- 需要点击或滑动时，action设为Tap或Swipe，在parameters中描述目标元素（使用屏幕描述中的文字和特征）
+		- **关键：reason 必须给视觉模型下达明确指令，要求其返回具体坐标**
+		- 对于 Tap 操作：reason 要求返回目标元素的(x, y)中心坐标
+		- 对于 Swipe 操作：reason 要求返回起始点(x1, y1)和结束点(x2, y2)坐标
+		- 对于 DoubleTap/LongPress 操作：reason 要求返回目标元素的(x, y)中心坐标
+		- 只有 finish 操作不需要坐标，其他所有操作都必须在 reason 中明确要求坐标
 		- 任务完成后使用finish标记
 		- 如果屏幕描述不清晰，可以优先使用Back返回或使用更保守的策略`
 }

@@ -26,4 +26,7 @@ go.work
 .DS_Store
 Thumbs.db
 
+# Logs
+logs/
+
 _demo_.md

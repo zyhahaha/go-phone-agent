@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -200,12 +199,12 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 	}
 
 	// 打印视觉模型 → DeepSeek 的交互内容
-	if a.config.Verbose {
-		fmt.Println()
-		fmt.Println("📤 autoglm-phone → DeepSeek (屏幕描述):")
-		fmt.Printf("%s\n", screenDescription)
-		fmt.Println()
-	}
+	// if a.config.Verbose {
+	// 	fmt.Println()
+	// 	fmt.Println("📤 autoglm-phone → DeepSeek (屏幕描述):")
+	// 	fmt.Printf("%s\n", screenDescription)
+	// 	fmt.Println()
+	// }
 
 	// 第二步：调用 DeepSeek 调度器，基于屏幕描述做决策
 	plan, err := a.scheduler.PlanStep(task, screenDescription, a.stepCount, a.config.MaxSteps, a.actionHistory)
@@ -213,17 +212,17 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 		return nil, "", err
 	}
 
-	// 打印 DeepSeek → autoglm-phone 的交互内容
-	if a.config.Verbose {
-		fmt.Println("📥 DeepSeek → autoglm-phone (操作指令):")
-		fmt.Printf("操作类型: %s\n", plan.ActionType)
-		fmt.Printf("操作原因: %s\n", plan.Reason)
-		if len(plan.Parameters) > 0 {
-			params, _ := json.MarshalIndent(plan.Parameters, "  ", "")
-			fmt.Printf("操作参数: %s\n", string(params))
-		}
-		fmt.Println()
-	}
+	// 打印决策模型发出的操作指令
+	// if a.config.Verbose {
+	// 	fmt.Println("操作指令:")
+	// 	fmt.Printf("操作类型: %s\n", plan.ActionType)
+	// 	fmt.Printf("操作原因: %s\n", plan.Reason)
+	// 	if len(plan.Parameters) > 0 {
+	// 		params, _ := json.MarshalIndent(plan.Parameters, "  ", "")
+	// 		fmt.Printf("操作参数: %s\n", string(params))
+	// 	}
+	// 	fmt.Println()
+	// }
 
 	// 检查是否完成
 	if plan.Finished || plan.ActionType == "finish" {
@@ -299,17 +298,9 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 		model.CreateSystemMessage(visionPrompt),
 		model.CreateUserMessage("请分析屏幕并返回操作坐标。", screenshot.Base64Data),
 	}
-	fmt.Println(strings.Repeat("=", 50), "视觉坐标分析提示词 Start", strings.Repeat("=", 50))
-	fmt.Println(visionContext[0])
-	fmt.Println(strings.Repeat("=", 50), "视觉坐标分析提示词 End", strings.Repeat("=", 50))
-
-	// 打印发送给视觉模型的指令
-	if a.config.Verbose {
-		fmt.Println("📥 DeepSeek → autoglm-phone (视觉指令):")
-		fmt.Printf("操作类型: %s\n", plan.ActionType)
-		fmt.Printf("目标描述: %s\n", plan.Reason)
-		fmt.Println()
-	}
+	model.LogStart("视觉坐标分析提示词")
+	model.LogContent(visionContext[0])
+	model.LogEnd("视觉坐标分析提示词")
 
 	// 调用视觉模型获取坐标
 	response, err := a.modelClient.Request(visionContext)
@@ -317,12 +308,9 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 		return nil, "", err
 	}
 
-	// 打印视觉模型的原始响应
-	if a.config.Verbose {
-		fmt.Println("📤 autoglm-phone → DeepSeek (坐标响应):")
-		fmt.Printf("%s\n", response.RawContent)
-		fmt.Println()
-	}
+	model.LogStart("视觉坐标模型输出")
+	model.LogContent(response)
+	model.LogEnd("视觉坐标模型输出")
 
 	// 解析视觉模型的响应（纯坐标格式）
 	coordinates, err := parseVisionCoordinates(response.RawContent, a.config.Verbose)
@@ -422,9 +410,9 @@ func (a *PhoneAgent) analyzeScreen(screenshot *adb.Screenshot) (string, error) {
 		model.CreateUserMessage("请分析这张图片", screenshot.Base64Data),
 	}
 
-	fmt.Println(strings.Repeat("=", 50), "屏幕内容分析提示词 Start", strings.Repeat("=", 50))
-	fmt.Println(visionContext[0])
-	fmt.Println(strings.Repeat("=", 50), "屏幕内容分析提示词 End", strings.Repeat("=", 50))
+	model.LogStart("屏幕内容分析提示词")
+	model.LogContent(visionContext[0])
+	model.LogEnd("屏幕内容分析提示词")
 	response, err := a.modelClient.Request(visionContext)
 	if err != nil {
 		return "", err
@@ -444,6 +432,7 @@ func (a *PhoneAgent) getVisionPrompt(plan *model.PlanResult) string {
 		- 你只负责识别屏幕上的元素位置，返回坐标
 		- 不需要分析操作逻辑或决定下一步做什么
 		- **只返回坐标数据，使用XML标签包裹，不要返回任何动作指令或解释文字**
+		- 如果不知道干什么，或者不知道怎么做，请返回空坐标[0,0]
 
 		**必须严格遵守的输出格式：**
 
@@ -512,10 +501,11 @@ func parseVisionCoordinates(content string, verbose bool) ([][]float64, error) {
 	content = strings.TrimSpace(content)
 
 	// 尝试提取坐标（支持多种格式）
-	// 格式：[x,y] 或 [x,y],[x2,y2]
+	// 格式1：[x,y] 或 [x,y],[x2,y2] - 点坐标
+	// 格式2：[[x1,y1,x2,y2]] - 边界框，自动转换为中心点
 	var coordinates [][]float64
 
-	// 查找所有 [xxx,xxx] 格式的坐标
+	// 查找所有 [xxx,xxx] 或 [xxx,xxx,xxx,xxx] 格式的坐标
 	openBracket := -1 // 使用 -1 表示未找到 [
 	for i := 0; i < len(content); i++ {
 		char := content[i]
@@ -539,20 +529,32 @@ func parseVisionCoordinates(content string, verbose bool) ([][]float64, error) {
 	return nil, fmt.Errorf("无法解析坐标: %s", content)
 }
 
-// parseSingleCoord 解析单个坐标
+// parseSingleCoord 解析单个坐标，支持点坐标和边界框格式
 func parseSingleCoord(s string) ([]float64, error) {
 	parts := strings.Split(s, ",")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("坐标格式错误")
+	var coords []float64
+
+	// 解析所有数值
+	for _, part := range parts {
+		val, err := parseFloat(strings.TrimSpace(part))
+		if err != nil {
+			continue // 跳过无效值
+		}
+		coords = append(coords, val)
 	}
 
-	x, err1 := parseFloat(strings.TrimSpace(parts[0]))
-	y, err2 := parseFloat(strings.TrimSpace(parts[1]))
-	if err1 != nil || err2 != nil {
-		return nil, fmt.Errorf("坐标值错误")
+	// 根据数值数量判断格式
+	if len(coords) == 2 {
+		// 格式1：[x,y] - 点坐标
+		return []float64{coords[0], coords[1]}, nil
+	} else if len(coords) == 4 {
+		// 格式2：[x1,y1,x2,y2] - 边界框，转换为中心点
+		centerX := (coords[0] + coords[2]) / 2
+		centerY := (coords[1] + coords[3]) / 2
+		return []float64{centerX, centerY}, nil
 	}
 
-	return []float64{x, y}, nil
+	return nil, fmt.Errorf("坐标格式错误：期望2或4个数值，实际得到%d个", len(coords))
 }
 
 // parseFloat 解析浮点数
