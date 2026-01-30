@@ -50,6 +50,10 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/phone-agent-linux-arm64 cmd/main.go
           # Linux arm
           CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -ldflags="-s -w" -o bin/phone-agent-linux-arm cmd/main.go
+          # macOS amd64 (Intel 芯片)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/phone-agent-macos-amd64 cmd/main.go
+          # macOS arm64 (Apple Silicon 芯片，如 M1/M2/M3 系列)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/phone-agent-macos-arm64 cmd/main.go
           # Termux
           # go build -ldflags="-s -w" -o phone-agent-termux cmd/main.go
 
