@@ -8,31 +8,62 @@ import (
 
 	"go-phone-agent/adb"
 	"go-phone-agent/agent"
+	"go-phone-agent/config"
 	"go-phone-agent/model"
 )
 
 func main() {
 	// 定义命令行参数
-	maxSteps := flag.Int("max-steps", 100, "Maximum steps per task")
-	deviceID := flag.String("device-id", os.Getenv("PHONE_AGENT_DEVICE_ID"), "ADB device ID")
+	configFile := flag.String("config", "", "Path to config file (default: ./config.yaml or ~/.phone-agent/config.yaml)")
+	maxSteps := flag.Int("max-steps", 0, "Maximum steps per task (overrides config)")
+	deviceID := flag.String("device-id", "", "ADB device ID (overrides config)")
 	quiet := flag.Bool("quiet", false, "Suppress verbose output")
 	logEnabled := flag.Bool("log", false, "Enable logging to file (default: disabled)")
 	// listApps := flag.Bool("list-apps", false, "List supported apps and exit")
 	listDevices := flag.Bool("list-devices", false, "List connected devices and exit")
 	connect := flag.String("connect", "", "Connect to remote device (e.g., 192.168.1.100:5555)")
 	disconnect := flag.String("disconnect", "", "Disconnect from remote device")
-	// 调度器模式参数（双模型架构）
-	schedulerURL := flag.String("scheduler-url", "https://api.deepseek.com", "Scheduler (DeepSeek) API base URL")
-	schedulerKey := flag.String("scheduler-key", os.Getenv("SCHEDULER_API_KEY"), "Scheduler (DeepSeek) API key")
-	schedulerModel := flag.String("scheduler-model", "deepseek-chat", "Scheduler (DeepSeek) model name")
-	visionURL := flag.String("vision-url", "https://open.bigmodel.cn/api/paas/v4", "Vision (autoglm-phone) API base URL")
-	visionKey := flag.String("vision-key", os.Getenv("VISION_API_KEY"), "Vision (autoglm-phone) API key")
-	visionModel := flag.String("vision-model", "autoglm-phone", "Vision (autoglm-phone) model name")
+	// 决策模型模式参数（双模型架构）
+	decisionURL := flag.String("decision-url", "", "Decision model API base URL (overrides config)")
+	decisionKey := flag.String("decision-key", "", "Decision model API key (overrides config)")
+	decisionModel := flag.String("decision-model", "", "Decision model model name (overrides config)")
+	visionURL := flag.String("vision-url", "", "Vision model API base URL (overrides config)")
+	visionKey := flag.String("vision-key", "", "Vision model API key (overrides config)")
+	visionModel := flag.String("vision-model", "", "Vision model model name (overrides config)")
 
 	flag.Parse()
 
+	// 加载配置文件
+	cfg, err := config.LoadConfig(*configFile)
+	if err != nil {
+		fmt.Printf("Failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 合并命令行参数（命令行参数优先级更高）
+	flags := &config.Flags{
+		MaxSteps:       *maxSteps,
+		DeviceID:       *deviceID,
+		Quiet:          *quiet,
+		LogEnabled:     *logEnabled,
+		ListDevices:    *listDevices,
+		Connect:        *connect,
+		Disconnect:     *disconnect,
+		DecisionURL:    *decisionURL,
+		DecisionKey:    *decisionKey,
+		DecisionModel:  *decisionModel,
+		VisionURL:      *visionURL,
+		VisionKey:      *visionKey,
+		VisionModel:    *visionModel,
+		ConfigFile:     *configFile,
+	}
+	cfg.MergeWithFlags(flags)
+
+	// 从环境变量获取 API 密钥
+	cfg.GetAPIKeysFromEnv()
+
 	// 初始化日志系统（仅在 -log 参数启用时）
-	if *logEnabled {
+	if flags.LogEnabled {
 		if err := model.InitLogger(); err != nil {
 			fmt.Printf("Warning: Failed to initialize logger: %v\n", err)
 		}
@@ -52,7 +83,7 @@ func main() {
 	// }
 
 	// 列出设备
-	if *listDevices {
+	if flags.ListDevices {
 		devices, err := adb.ListDevices()
 		if err != nil {
 			fmt.Printf("Failed to list devices: %v\n", err)
@@ -76,24 +107,24 @@ func main() {
 	}
 
 	// 连接远程设备
-	if *connect != "" {
-		fmt.Printf("Connecting to %s...\n", *connect)
-		if err := adb.ConnectDevice(*connect); err != nil {
+	if flags.Connect != "" {
+		fmt.Printf("Connecting to %s...\n", flags.Connect)
+		if err := adb.ConnectDevice(flags.Connect); err != nil {
 			fmt.Printf("✗ Failed to connect: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("✓ Connected to %s\n", *connect)
-		*deviceID = *connect
+		fmt.Printf("✓ Connected to %s\n", flags.Connect)
+		cfg.Agent.DeviceID = flags.Connect
 	}
 
 	// 断开设备
-	if *disconnect != "" {
-		fmt.Printf("Disconnecting from %s...\n", *disconnect)
-		if err := adb.DisconnectDevice(*disconnect); err != nil {
+	if flags.Disconnect != "" {
+		fmt.Printf("Disconnecting from %s...\n", flags.Disconnect)
+		if err := adb.DisconnectDevice(flags.Disconnect); err != nil {
 			fmt.Printf("✗ Failed to disconnect: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("✓ Disconnected from %s\n", *disconnect)
+		fmt.Printf("✓ Disconnected from %s\n", flags.Disconnect)
 		return
 	}
 
@@ -110,12 +141,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *deviceID == "" {
-		*deviceID = devices[0]
+	if cfg.Agent.DeviceID == "" {
+		cfg.Agent.DeviceID = devices[0]
 	}
 
 	// 检查 ADB Keyboard
-	if !adb.CheckADBKeyboard(*deviceID) {
+	if !adb.CheckADBKeyboard(cfg.Agent.DeviceID) {
 		fmt.Println("❌ ADB Keyboard is not installed on the device.")
 		fmt.Println("Solution:")
 		fmt.Println("  1. Download ADB Keyboard APK from:")
@@ -125,46 +156,52 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 创建调度器模式配置（双模型架构）
-	schedulerConfig := &model.SchedulerConfig{
-		Scheduler: &model.ModelConfig{
-			BaseURL:          *schedulerURL,
-			APIKey:           *schedulerKey,
-			ModelName:        *schedulerModel,
-			MaxTokens:        2000,
-			Temperature:      0.7,
-			TopP:             0.9,
-			FrequencyPenalty: 0.0,
+	// 将 config.Config 转换为 agent.AgentConfig 和 model.DecisionConfig
+	agentConfig := &agent.AgentConfig{
+		MaxSteps: cfg.Agent.MaxSteps,
+		DeviceID: cfg.Agent.DeviceID,
+		SystemPrompt: cfg.Agent.SystemPrompt,
+		Verbose: cfg.Agent.Verbose,
+	}
+
+	decisionConfig := &model.DecisionConfig{
+		Decision: &model.ModelConfig{
+			BaseURL:          cfg.Decision.Decision.BaseURL,
+			APIKey:           cfg.Decision.Decision.APIKey,
+			ModelName:        cfg.Decision.Decision.ModelName,
+			MaxTokens:        cfg.Decision.Decision.MaxTokens,
+			Temperature:      cfg.Decision.Decision.Temperature,
+			TopP:             cfg.Decision.Decision.TopP,
+			FrequencyPenalty: cfg.Decision.Decision.FrequencyPenalty,
 		},
 		Vision: &model.ModelConfig{
-			BaseURL:          *visionURL,
-			APIKey:           *visionKey,
-			ModelName:        *visionModel,
-			MaxTokens:        3000,
-			Temperature:      0.0,
-			TopP:             0.85,
-			FrequencyPenalty: 0.2,
+			BaseURL:          cfg.Decision.Vision.BaseURL,
+			APIKey:           cfg.Decision.Vision.APIKey,
+			ModelName:        cfg.Decision.Vision.ModelName,
+			MaxTokens:        cfg.Decision.Vision.MaxTokens,
+			Temperature:      cfg.Decision.Vision.Temperature,
+			TopP:             cfg.Decision.Vision.TopP,
+			FrequencyPenalty: cfg.Decision.Vision.FrequencyPenalty,
 		},
 	}
 
-	agentConfig := &agent.AgentConfig{
-		MaxSteps: *maxSteps,
-		DeviceID: *deviceID,
-		Verbose:  !*quiet,
+	phoneAgent := agent.NewPhoneAgentWithDecisionModel(decisionConfig, agentConfig, nil, nil)
+
+	// 打印配置信息
+	fmt.Println("=" + strings.Repeat("=", 48))
+	fmt.Println("Phone Agent - Decision Model Mode (Decision Model + Vision Model)")
+	fmt.Println("=" + strings.Repeat("=", 48))
+	if *configFile != "" {
+		fmt.Printf("Config: %s\n", *configFile)
+	} else {
+		fmt.Printf("Config: Using default or auto-detected config\n")
 	}
-
-	phoneAgent := agent.NewPhoneAgentWithScheduler(schedulerConfig, agentConfig, nil, nil)
-
-	// 打印头部
-	fmt.Println("=" + strings.Repeat("=", 48))
-	fmt.Println("Phone Agent - Scheduler Mode (DeepSeek + autoglm-phone)")
-	fmt.Println("=" + strings.Repeat("=", 48))
-	fmt.Printf("Scheduler Model: %s\n", *schedulerModel)
-	fmt.Printf("Scheduler URL: %s\n", *schedulerURL)
-	fmt.Printf("Vision Model: %s\n", *visionModel)
-	fmt.Printf("Vision URL: %s\n", *visionURL)
-	fmt.Printf("Max Steps: %d\n", *maxSteps)
-	fmt.Printf("Device: %s\n", *deviceID)
+	fmt.Printf("Decision Model: %s\n", decisionConfig.Decision.ModelName)
+	fmt.Printf("Decision URL: %s\n", decisionConfig.Decision.BaseURL)
+	fmt.Printf("Vision Model: %s\n", decisionConfig.Vision.ModelName)
+	fmt.Printf("Vision URL: %s\n", decisionConfig.Vision.BaseURL)
+	fmt.Printf("Max Steps: %d\n", agentConfig.MaxSteps)
+	fmt.Printf("Device: %s\n", agentConfig.DeviceID)
 	fmt.Println("=" + strings.Repeat("=", 48))
 
 	// 获取任务

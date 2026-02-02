@@ -11,16 +11,16 @@ type ModelConfig struct {
 	FrequencyPenalty float64 // 频率惩罚
 }
 
-// SchedulerConfig 调度器配置（双模型架构）
-type SchedulerConfig struct {
-	Scheduler *ModelConfig // 调度器模型 (DeepSeek)，负责任务规划
-	Vision    *ModelConfig // 视觉模型 (autoglm-phone)，负责屏幕识别
+// DecisionConfig 决策模型配置（双模型架构）
+type DecisionConfig struct {
+	Decision *ModelConfig // 决策模型，负责任务规划
+	Vision   *ModelConfig // 视觉模型，负责屏幕识别
 }
 
-// DefaultSchedulerConfig 返回默认调度器配置
-func DefaultSchedulerConfig() *SchedulerConfig {
-	return &SchedulerConfig{
-		Scheduler: &ModelConfig{
+// DefaultDecisionConfig 返回默认决策模型配置
+func DefaultDecisionConfig() *DecisionConfig {
+	return &DecisionConfig{
+		Decision: &ModelConfig{
 			BaseURL:          "https://api.deepseek.com",
 			APIKey:           "EMPTY",
 			ModelName:        "deepseek-chat",

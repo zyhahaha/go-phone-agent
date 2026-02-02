@@ -1,0 +1,46 @@
+# Phone Agent 配置文件示例
+
+# Agent 配置
+agent:
+  # 每个任务最大步数
+  max-steps: 100
+  # ADB 设备 ID，为空则自动检测
+  device-id: ""
+  # 是否打印调试信息
+  verbose: true
+
+# 决策模型配置（双模型架构）
+decision:
+  # 决策模型配置
+  decision:
+    # 模型 API 地址
+    base-url: "https://api.deepseek.com"
+    # API 密钥（留空则从环境变量 DECISION_API_KEY 读取）
+    api-key: ""
+    # 模型名称
+    model-name: "deepseek-chat"
+    # 最大 token 数
+    max-tokens: 2000
+    # 采样温度
+    temperature: 0.7
+    # Top-P 采样
+    top-p: 0.9
+    # 频率惩罚
+    frequency-penalty: 0.0
+
+  # 视觉模型配置
+  vision:
+    # 模型 API 地址
+    base-url: "https://open.bigmodel.cn/api/paas/v4"
+    # API 密钥（留空则从环境变量 VISION_API_KEY 读取）
+    api-key: ""
+    # 模型名称
+    model-name: "autoglm-phone"
+    # 最大 token 数
+    max-tokens: 3000
+    # 采样温度
+    temperature: 0.0
+    # Top-P 采样
+    top-p: 0.85
+    # 频率惩罚
+    frequency-penalty: 0.2

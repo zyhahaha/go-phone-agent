@@ -11,36 +11,42 @@ import (
 
 // PhoneAgent 手机自动化 Agent
 type PhoneAgent struct {
-	modelClient     *model.Client
+	visionClient    *model.Client      // 屏幕分析客户端
+	coordClient     *model.Client      // 坐标识别客户端
 	actionHandler   *actions.ActionHandler
 	config          *AgentConfig
-	scheduler       *model.SchedulerDeepSeek
-	schedulerConfig *model.SchedulerConfig
+	decisionModel   *model.DecisionModel // 决策模型
+	decisionConfig  *model.DecisionConfig
 	context         []model.Message
 	stepCount       int
 	actionHistory   []model.ActionHistory
 	currentTask     string // 当前任务
 }
 
-// NewPhoneAgentWithScheduler 创建带调度器的 PhoneAgent
-func NewPhoneAgentWithScheduler(schedulerConfig *model.SchedulerConfig, agentConfig *AgentConfig, confirmationCallback func(string) bool, takeoverCallback func(string)) *PhoneAgent {
-	if schedulerConfig == nil {
-		schedulerConfig = model.DefaultSchedulerConfig()
+// NewPhoneAgentWithDecisionModel 创建带决策模型的 PhoneAgent
+func NewPhoneAgentWithDecisionModel(decisionConfig *model.DecisionConfig, agentConfig *AgentConfig, confirmationCallback func(string) bool, takeoverCallback func(string)) *PhoneAgent {
+	if decisionConfig == nil {
+		decisionConfig = model.DefaultDecisionConfig()
 	}
 	if agentConfig == nil {
 		agentConfig = DefaultAgentConfig()
 	}
 
+	// 创建两个专门的视觉客户端：屏幕分析和坐标识别
+	visionClient := model.NewClientWithSystemPrompt(decisionConfig.Vision, model.ScreenAnalysisPrompt)
+	coordClient := model.NewClientWithSystemPrompt(decisionConfig.Vision, model.VisionCoordPrompt)
+
 	return &PhoneAgent{
-		modelClient:     model.NewClient(schedulerConfig.Vision),
-		actionHandler:   actions.NewActionHandler(agentConfig.DeviceID, confirmationCallback, takeoverCallback),
-		config:          agentConfig,
-		scheduler:       model.NewSchedulerDeepSeek(schedulerConfig.Scheduler),
-		schedulerConfig: schedulerConfig,
-		context:         []model.Message{},
-		stepCount:       0,
-		actionHistory:   []model.ActionHistory{},
-		currentTask:     "",
+		visionClient:     visionClient,
+		coordClient:      coordClient,
+		actionHandler:    actions.NewActionHandler(agentConfig.DeviceID, confirmationCallback, takeoverCallback),
+		config:           agentConfig,
+		decisionModel:    model.NewDecisionModel(decisionConfig.Decision),
+		decisionConfig:   decisionConfig,
+		context:           []model.Message{},
+		stepCount:         0,
+		actionHistory:     []model.ActionHistory{},
+		currentTask:       "",
 	}
 }
 
@@ -110,8 +116,8 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 	var thinking string
 	var execErr error
 
-	// 执行调度器模式：DeepSeek 规划，autoglm-phone 执行
-	action, thinking, execErr = a.executeWithScheduler(userPrompt, screenshot)
+	// 执行决策模型模式：决策模型规划，视觉模型执行
+	action, thinking, execErr = a.executeWithDecisionModel(userPrompt, screenshot)
 
 	if execErr != nil {
 		if a.config.Verbose {
@@ -178,8 +184,8 @@ func (a *PhoneAgent) executeStep(userPrompt string, isFirst bool) *StepResult {
 	}
 }
 
-// executeWithScheduler 使用调度器模式执行
-func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Screenshot) (map[string]interface{}, string, error) {
+// executeWithDecisionModel 使用决策模型模式执行
+func (a *PhoneAgent) executeWithDecisionModel(userPrompt string, screenshot *adb.Screenshot) (map[string]interface{}, string, error) {
 	// 使用保存的当前任务
 	task := a.currentTask
 
@@ -198,16 +204,16 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 		screenDescription = screenDesc
 	}
 
-	// 打印视觉模型 → DeepSeek 的交互内容
+	// 打印视觉模型 → 决策模型的交互内容
 	// if a.config.Verbose {
 	// 	fmt.Println()
-	// 	fmt.Println("📤 autoglm-phone → DeepSeek (屏幕描述):")
+	// 	fmt.Println("📤 视觉模型 → 决策模型 (屏幕描述):")
 	// 	fmt.Printf("%s\n", screenDescription)
 	// 	fmt.Println()
 	// }
 
-	// 第二步：调用 DeepSeek 调度器，基于屏幕描述做决策
-	plan, err := a.scheduler.PlanStep(task, screenDescription, a.stepCount, a.config.MaxSteps, a.actionHistory)
+	// 第二步：调用决策模型，基于屏幕描述做决策
+	plan, err := a.decisionModel.PlanStep(task, screenDescription, a.stepCount, a.config.MaxSteps, a.actionHistory)
 	if err != nil {
 		return nil, "", err
 	}
@@ -292,18 +298,18 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 	}
 
 	// 需要视觉解析的操作（Tap, Swipe, DoubleTap, LongPress）
-	// 构建视觉模型的系统提示（仅获取坐标）
-	visionPrompt := a.getVisionPrompt(plan)
+	// 使用专门的坐标识别客户端
+	description := a.getVisionDescription(plan)
 	visionContext := []model.Message{
-		model.CreateSystemMessage(visionPrompt),
-		model.CreateUserMessage("请分析屏幕并返回操作坐标。", screenshot.Base64Data),
+		model.CreateUserMessage(description, screenshot.Base64Data),
 	}
 	model.LogStart("视觉坐标分析提示词")
+	model.LogContent(*a.coordClient.SystemPrompt)
 	model.LogContent(visionContext[0])
 	model.LogEnd("视觉坐标分析提示词")
 
 	// 调用视觉模型获取坐标
-	response, err := a.modelClient.Request(visionContext)
+	response, err := a.coordClient.Request(visionContext)
 	if err != nil {
 		return nil, "", err
 	}
@@ -318,7 +324,7 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 		return nil, "", err
 	}
 
-	// 构建完整的操作：DeepSeek 的操作类型 + 视觉模型的坐标
+	// 构建完整的操作：决策模型的操作类型 + 视觉模型的坐标
 	visionAction := map[string]interface{}{
 		"action":    plan.ActionType,
 		"_metadata": "do",
@@ -379,113 +385,38 @@ func (a *PhoneAgent) executeWithScheduler(userPrompt string, screenshot *adb.Scr
 
 // analyzeScreen 使用视觉模型分析屏幕，返回屏幕描述
 func (a *PhoneAgent) analyzeScreen(screenshot *adb.Screenshot) (string, error) {
-	// 构建屏幕分析的提示词
-	screenAnalysisPrompt := `
-		你是一个屏幕内容分析助手。请详细描述屏幕截图中的所有可见内容。
-
-		**分析重点：**
-		1. **所有文字内容**：标题、按钮文字、输入框提示、列表项、数字、时间、状态文字等
-		2. **所有按钮**：文字按钮的完整名称、位置（顶部/底部/中部）、颜色、大小
-		3. **所有图标**：图标的外观特征、形状、颜色、位置、可能的含义（如圆形相机图标、齿轮设置图标、聊天气泡图标等）
-		4. **所有UI元素**：输入框、开关、滑块、标签页、导航栏、返回按钮等
-		5. **页面结构**：顶部标题栏、内容区域、底部导航栏、悬浮按钮等布局
-
-		**描述格式：**
-		- 按从上到下、从左到右的顺序描述
-		- 先描述顶部区域，再描述中间内容，最后描述底部
-		- 每个按钮、图标都要详细描述其外观和文字
-
-		**输出要求：**
-		- 完整描述，不要遗漏任何文字或可识别的UI元素
-		- 准确描述按钮的完整文字内容
-		- 详细描述图标的外观特征，而不是简单说"图标"
-		- 描述位置时使用具体方位（左上角、右上角、底部中央、右侧等）
-		- 字数不限，越详细越好
-
-		**示例输出：**
-		"顶部标题栏显示'我的相册'，右侧有返回图标（向左箭头）。中间显示九宫格图片，每个图片下方有日期文字（'1月15日'、'1月14日'等）。底部导航栏有四个图标：左侧第一个是圆形头像图标，第二个是方形相册图标，第三个是心形图标，右侧是设置齿轮图标。"`
-
-	visionContext := []model.Message{
-		model.CreateSystemMessage(screenAnalysisPrompt),
-		model.CreateUserMessage("请分析这张图片", screenshot.Base64Data),
+	// 使用专门的屏幕分析客户端（系统提示词已缓存）
+	messages := []model.Message{
+		model.CreateUserMessage("描述屏幕内容", screenshot.Base64Data),
 	}
 
 	model.LogStart("屏幕内容分析提示词")
-	model.LogContent(visionContext[0])
+	model.LogContent(*a.visionClient.SystemPrompt)
 	model.LogEnd("屏幕内容分析提示词")
-	response, err := a.modelClient.Request(visionContext)
+
+	response, err := a.visionClient.Request(messages)
 	if err != nil {
 		return "", err
 	}
 
-	// 屏幕分析应该返回纯文本，直接使用原始响应内容
-	// 不要经过 parseResponse 解析，避免被误解析为 finish 格式
 	return response.RawContent, nil
 }
 
-// getVisionPrompt 获取视觉模型的提示词
-func (a *PhoneAgent) getVisionPrompt(plan *model.PlanResult) string {
-	basePrompt := `
-		你是一个纯视觉坐标识别助手。你的唯一职责是分析屏幕截图并返回坐标。
-
-		**重要说明：**
-		- 你只负责识别屏幕上的元素位置，返回坐标
-		- 不需要分析操作逻辑或决定下一步做什么
-		- **只返回坐标数据，使用XML标签包裹，不要返回任何动作指令或解释文字**
-		- 如果不知道干什么，或者不知道怎么做，请返回空坐标[0,0]
-
-		**必须严格遵守的输出格式：**
-
-		如果描述提到"点击"、"点"或"tap"：
-		- 返回点击位置的坐标
-		- **唯一正确的输出格式**：<answer>[x,y]</answer>
-		- 示例：<answer>[500,200]</answer>
-
-		如果描述提到"滑动"、"划"或"swipe"：
-		- 返回起点和终点的坐标
-		- **唯一正确的输出格式**：<answer>[x1,y1],[x2,y2]</answer>
-		- 其中 [x1,y1] 是起点，[x2,y2] 是终点
-		- 示例：<answer>[500,800],[500,200]</answer>
-
-		如果描述提到"双击"：
-		- 返回双击位置的坐标
-		- **唯一正确的输出格式**：<answer>[x,y]</answer>
-		- 示例：<answer>[300,400]</answer>
-
-		如果描述提到"长按"：
-		- 返回长按位置的坐标
-		- **唯一正确的输出格式**：<answer>[x,y]</answer>
-		- 示例：<answer>[600,300]</answer>
-
-		坐标范围：0-1000，表示相对位置（左上角为[0,0]，右下角为[1000,1000]）。
-
-		**错误示例（绝对不要这样输出）：**
-		❌ [103,470] - 缺少XML标签
-		❌ 坐标是[103,470] - 添加了文字说明
-		❌ 点击位置：<answer>[103,470]</answer> - 添加了前缀文字
-
-		**正确示例（唯一正确的输出方式）：**
-		✅ <answer>[103,470]</answer>
-		✅ <answer>[500,800],[500,200]</answer>
-
-		**记住：整个响应只包含<answer>标签和坐标，不能有其他任何内容！**`
-
+// getVisionDescription 获取视觉模型的目标描述
+func (a *PhoneAgent) getVisionDescription(plan *model.PlanResult) string {
 	// 根据操作类型和原因构建具体的描述
-	var description string
 	switch plan.ActionType {
 	case "Tap":
-		description = fmt.Sprintf("需要点击：%s", plan.Reason)
+		return fmt.Sprintf("需要点击：%s", plan.Reason)
 	case "Swipe":
-		description = fmt.Sprintf("需要滑动：%s", plan.Reason)
+		return fmt.Sprintf("需要滑动：%s", plan.Reason)
 	case "DoubleTap":
-		description = fmt.Sprintf("需要双击：%s", plan.Reason)
+		return fmt.Sprintf("需要双击：%s", plan.Reason)
 	case "LongPress":
-		description = fmt.Sprintf("需要长按：%s", plan.Reason)
+		return fmt.Sprintf("需要长按：%s", plan.Reason)
 	default:
-		description = plan.Reason
+		return plan.Reason
 	}
-
-	return basePrompt + "\n\n目标描述：" + description
 }
 
 // parseVisionCoordinates 解析视觉模型返回的纯坐标
